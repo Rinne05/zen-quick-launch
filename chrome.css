@@ -1,0 +1,448 @@
+#zen-quick-launch-container {
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-columns: repeat(var(--zen-quick-launch-columns, 3), minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 3px 6px 6px !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
+/* The grid display above has !important, so the UA [hidden] rule does not win.
+   Zen solves the same problem the same way for .zen-essentials-container. */
+#zen-quick-launch-container[hidden] {
+  display: none !important;
+}
+
+#zen-quick-launch-container > .zen-quick-launch-item {
+  appearance: none !important;
+  -moz-appearance: none !important;
+  /* Gecko keeps <button> as display:inline-block (chrome/toolkit/res/forms.css),
+     and with appearance:none the icon is a plain block box, so
+     justify-content/align-items above would have no effect and the icon would
+     sit in the top-left corner. Making the button a flex container centers it. */
+  display: flex !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: var(--zen-quick-launch-item-size, 42px) !important;
+  min-height: var(--zen-quick-launch-item-size, 42px) !important;
+  max-height: var(--zen-quick-launch-item-size, 42px) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--border-radius-medium, 10px) !important;
+  background: var(--zen-toolbar-element-bg, color-mix(in srgb, currentColor 7%, transparent)) !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  cursor: pointer !important;
+  justify-content: center !important;
+  align-items: center !important;
+  transition: background-color 120ms ease, scale 90ms ease !important;
+}
+
+#zen-quick-launch-container > .zen-quick-launch-item:hover {
+  background: color-mix(in srgb, var(--zen-toolbar-element-bg, currentColor) 80%, currentColor 12%) !important;
+}
+
+#zen-quick-launch-container > .zen-quick-launch-item:active {
+  scale: 0.95;
+}
+
+#zen-quick-launch-container > .zen-quick-launch-item .zen-quick-launch-icon {
+  display: block !important;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+  max-width: 20px !important;
+  max-height: 20px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+  border-radius: 4px !important;
+  pointer-events: none !important;
+}
+
+:root:not([zen-sidebar-expanded="true"]) #zen-quick-launch-container {
+  grid-template-columns: 1fr !important;
+  gap: 3px !important;
+  padding-inline: 3px !important;
+}
+
+/* Collapsed sidebar: Zen sets --tab-min-width: 48px !important in exactly this
+   scope, so the squares keep matching the essentials row. */
+:root:not([zen-sidebar-expanded="true"]) #zen-quick-launch-container > .zen-quick-launch-item {
+  width: var(--tab-min-width, 38px) !important;
+  min-width: var(--tab-min-width, 38px) !important;
+  max-width: var(--tab-min-width, 38px) !important;
+  height: var(--tab-min-width, 38px) !important;
+  min-height: var(--tab-min-width, 38px) !important;
+  max-height: var(--tab-min-width, 38px) !important;
+  justify-self: center !important;
+}
+
+/* === Settings panel (injected into browser.xhtml) === */
+
+#zen-quick-launch-settings {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+  display: block !important;
+  color-scheme: light dark;
+  font: message-box !important;
+  --zql-panel-bg: light-dark(#ffffff, #232326);
+  --zql-panel-border: light-dark(#d8d8de, #3a3a40);
+  --zql-muted: light-dark(#66666f, #aaaab4);
+  --zql-text: light-dark(#1d1d20, #f2f2f4);
+  --zql-input-bg: light-dark(#ffffff, #1a1a1d);
+  --zql-accent: AccentColor;
+  --zql-accent-text: AccentColorText;
+  --zql-danger: light-dark(#b42318, #ff746b);
+  --zql-ok: light-dark(#137333, #67c587);
+  color: var(--zql-text) !important;
+}
+
+#zen-quick-launch-settings[hidden] {
+  display: none !important;
+}
+
+#zen-quick-launch-settings .zql-backdrop {
+  position: absolute !important;
+  inset: 0 !important;
+  background: color-mix(in srgb, #000 45%, transparent) !important;
+}
+
+#zen-quick-launch-settings .zql-dialog {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: min(1120px, calc(100vw - 56px)) !important;
+  max-height: calc(100vh - 56px) !important;
+  background: var(--zql-panel-bg) !important;
+  border: 1px solid var(--zql-panel-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+}
+
+#zen-quick-launch-settings .zql-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  padding: 20px 22px 16px !important;
+  border-bottom: 1px solid var(--zql-panel-border) !important;
+}
+
+#zen-quick-launch-settings .zql-eyebrow {
+  margin: 0 0 6px !important;
+  color: var(--zql-muted) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.16em !important;
+}
+
+#zen-quick-launch-settings .zql-titles h1 {
+  margin: 0 !important;
+  font-size: 24px !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+}
+
+#zen-quick-launch-settings .zql-subtitle {
+  max-width: 720px !important;
+  margin: 8px 0 0 !important;
+  color: var(--zql-muted) !important;
+  line-height: 1.5 !important;
+  font-size: 12px !important;
+}
+
+#zen-quick-launch-settings .zql-header-actions {
+  display: flex !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+#zen-quick-launch-settings .zql-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 22px !important;
+  flex-wrap: wrap !important;
+  padding: 14px 22px !important;
+  border-bottom: 1px solid var(--zql-panel-border) !important;
+}
+
+#zen-quick-launch-settings .zql-toolbar-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 26px !important;
+  flex-wrap: wrap !important;
+}
+
+#zen-quick-launch-settings .zql-field {
+  display: grid !important;
+  gap: 6px !important;
+}
+
+#zen-quick-launch-settings .zql-field > span {
+  color: var(--zql-muted) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+#zen-quick-launch-settings .zql-toggle {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+}
+
+#zen-quick-launch-settings .zql-toggle input {
+  width: 18px !important;
+  height: 18px !important;
+  accent-color: var(--zql-accent) !important;
+}
+
+#zen-quick-launch-settings .zql-toggle span {
+  display: grid !important;
+  gap: 2px !important;
+}
+
+#zen-quick-launch-settings .zql-toggle small {
+  color: var(--zql-muted) !important;
+}
+
+#zen-quick-launch-settings .zql-items {
+  flex: 1 !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 10px !important;
+  padding: 14px 22px !important;
+  overflow-y: auto !important;
+}
+
+#zen-quick-launch-settings .zql-items[hidden] {
+  display: none !important;
+}
+
+#zen-quick-launch-settings .zql-item {
+  display: grid !important;
+  grid-template-columns: 26px 24px 42px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: 1px solid var(--zql-panel-border) !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+  background: var(--zql-panel-bg) !important;
+}
+
+#zen-quick-launch-settings .zql-item.zql-dragging {
+  opacity: 0.45 !important;
+}
+
+#zen-quick-launch-settings .zql-item.zql-drop-target {
+  outline: 2px solid var(--zql-accent) !important;
+  outline-offset: 2px !important;
+}
+
+#zen-quick-launch-settings .zql-drag {
+  color: var(--zql-muted) !important;
+  text-align: center !important;
+  cursor: grab !important;
+  user-select: none !important;
+  font-size: 18px !important;
+}
+
+#zen-quick-launch-settings .zql-enabled-wrap {
+  display: grid !important;
+  place-items: center !important;
+}
+
+#zen-quick-launch-settings .zql-enabled {
+  width: 18px !important;
+  height: 18px !important;
+  accent-color: var(--zql-accent) !important;
+}
+
+#zen-quick-launch-settings .zql-preview {
+  width: 42px !important;
+  height: 42px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, currentColor 7%, transparent) !important;
+}
+
+#zen-quick-launch-settings .zql-preview-image {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+  max-width: 20px !important;
+  max-height: 20px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+  border-radius: 4px !important;
+}
+
+#zen-quick-launch-settings .zql-fields {
+  display: grid !important;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(240px, 2fr) minmax(140px, 1fr) !important;
+  gap: 10px !important;
+}
+
+#zen-quick-launch-settings .zql-fields label {
+  display: grid !important;
+  gap: 5px !important;
+}
+
+#zen-quick-launch-settings .zql-fields label > span {
+  color: var(--zql-muted) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+#zen-quick-launch-settings .zql-item-actions {
+  display: flex !important;
+  gap: 6px !important;
+}
+
+#zen-quick-launch-settings .zql-item-actions .zql-button {
+  min-height: 32px !important;
+  padding-inline: 10px !important;
+}
+
+#zen-quick-launch-settings .zql-empty {
+  margin: 14px 22px !important;
+  border: 1px dashed var(--zql-panel-border) !important;
+  border-radius: 14px !important;
+  padding: 36px 24px !important;
+  text-align: center !important;
+  color: var(--zql-muted) !important;
+}
+
+#zen-quick-launch-settings .zql-empty[hidden] {
+  display: none !important;
+}
+
+#zen-quick-launch-settings .zql-empty h3 {
+  margin: 0 0 6px !important;
+  color: var(--zql-text) !important;
+}
+
+#zen-quick-launch-settings .zql-empty p {
+  margin: 0 0 16px !important;
+}
+
+#zen-quick-launch-settings .zql-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 12px 22px !important;
+  border-top: 1px solid var(--zql-panel-border) !important;
+}
+
+#zen-quick-launch-settings .zql-status {
+  min-height: 18px !important;
+  color: var(--zql-muted) !important;
+}
+
+#zen-quick-launch-settings .zql-status.zql-ok {
+  color: var(--zql-ok) !important;
+}
+
+#zen-quick-launch-settings .zql-status.zql-error {
+  color: var(--zql-danger) !important;
+}
+
+#zen-quick-launch-settings .zql-footer-actions {
+  display: flex !important;
+  gap: 8px !important;
+}
+
+#zen-quick-launch-settings .zql-button {
+  appearance: none !important;
+  -moz-appearance: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-height: 34px !important;
+  border: 1px solid var(--zql-panel-border) !important;
+  border-radius: 9px !important;
+  padding: 6px 12px !important;
+  background: var(--zql-panel-bg) !important;
+  color: var(--zql-text) !important;
+  font: inherit !important;
+  cursor: pointer !important;
+}
+
+#zen-quick-launch-settings .zql-button:hover {
+  filter: brightness(0.96) !important;
+}
+
+#zen-quick-launch-settings .zql-button.zql-primary {
+  border-color: transparent !important;
+  background: var(--zql-accent) !important;
+  color: var(--zql-accent-text) !important;
+}
+
+#zen-quick-launch-settings .zql-button.zql-danger {
+  color: var(--zql-danger) !important;
+}
+
+#zen-quick-launch-settings .zql-icon-button {
+  width: 34px !important;
+  padding: 0 !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+}
+
+#zen-quick-launch-settings .zql-file-button input {
+  display: none !important;
+}
+
+#zen-quick-launch-settings select,
+#zen-quick-launch-settings input[type="text"] {
+  appearance: none !important;
+  -moz-appearance: none !important;
+  min-height: 34px !important;
+  border: 1px solid var(--zql-panel-border) !important;
+  border-radius: 8px !important;
+  background: var(--zql-input-bg) !important;
+  color: var(--zql-text) !important;
+  padding: 6px 9px !important;
+  font: inherit !important;
+}
+
+#zen-quick-launch-settings input[type="text"].zql-invalid {
+  border-color: var(--zql-danger) !important;
+}
+
+#zen-quick-launch-settings select {
+  min-width: 76px !important;
+}
+
+@media (max-width: 980px) {
+  #zen-quick-launch-settings .zql-item {
+    grid-template-columns: 26px 24px 42px minmax(0, 1fr) !important;
+  }
+
+  #zen-quick-launch-settings .zql-item-actions {
+    grid-column: 4 !important;
+  }
+
+  #zen-quick-launch-settings .zql-fields {
+    grid-template-columns: 1fr !important;
+  }
+}

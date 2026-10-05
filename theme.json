@@ -1,0 +1,33 @@
+{
+  "id": "zen-quick-launch",
+  "name": "Zen Quick Launch",
+  "description": "Independent sidebar launchers that always open a new normal tab.",
+  "version": "1.0.0",
+  "style": {
+    "chrome": "chrome.css"
+  },
+  "tags": [
+    "productivity",
+    "zen"
+  ],
+  "fork": [
+    "zen"
+  ],
+  "supportsUnload": true,
+  "scripts": {
+    "JS": {
+      "zen-quick-launch.uc.js": {
+        "loadOrder": 20,
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "zen-quick-launch-settings.uc.js": {
+        "loadOrder": 19,
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      }
+    }
+  }
+}
