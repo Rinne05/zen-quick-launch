@@ -17,6 +17,7 @@
   const OPEN_URL_TOPIC = "zen-quick-launch:open-url";
   const CONTEXT_MENU_ID = "zen-quick-launch-context-menu";
   const DRAG_INDICATOR_ID = "zen-quick-launch-drag-indicator";
+  const DIVIDER_ID = "zen-quick-launch-divider";
   const DRAG_MIME = "application/x-zen-quick-launch-item";
 
   const DEFAULT_ICON = "chrome://global/skin/icons/defaultFavicon.svg";
@@ -817,6 +818,16 @@ ${item.url}
     return button;
   }
 
+  function ensureDivider() {
+    let divider = document.getElementById(DIVIDER_ID);
+    if (!divider) {
+      divider = document.createElementNS(XHTML_NS, "div");
+      divider.id = DIVIDER_ID;
+      divider.setAttribute("aria-hidden", "true");
+    }
+    return divider;
+  }
+
   function buildContainer() {
     let container = document.getElementById(CONTAINER_ID);
     if (!container) {
@@ -963,8 +974,12 @@ ${item.url}
     // sibling puts the launchers in normal flow above Essentials instead.
     const essentialsHost = document.getElementById("zen-essentials");
     if (essentialsHost?.parentNode) {
-      if (essentialsHost.previousSibling !== container) {
-        essentialsHost.before(container);
+      const divider = ensureDivider();
+      if (essentialsHost.previousSibling !== divider) {
+        essentialsHost.before(divider);
+      }
+      if (divider.previousSibling !== container) {
+        divider.before(container);
       }
       return true;
     }
@@ -1198,6 +1213,7 @@ ${item.url}
 
     try {
       document.getElementById(CONTAINER_ID)?.remove();
+      document.getElementById(DIVIDER_ID)?.remove();
       document.getElementById(CONTEXT_MENU_ID)?.remove();
       document.getElementById(DRAG_INDICATOR_ID)?.remove();
       document.documentElement.removeAttribute(

@@ -43,7 +43,7 @@ chrome://zen-quick-launch/content/settings.html
 - 拖动入口：按标签页拖动的方式显示插入线。自定义模式下新的顺序写入 preferences；书签模式下直接调用 Places 调整书签在文件夹中的顺序。
 - 自动图标：侧栏优先采用已打开匹配标签页显示的 favicon，再尝试 Places 的 `page-icon:`；失败后重试并回退到通用图标。设置页预览采用相同的重试与回退策略。
 - 自定义图标：在图标栏填写图标 URL。
-- 位置：快捷启动网格位于 Essentials 常驻标签页上方，不会与常驻标签页重叠。
+- 位置：快捷启动网格位于 Essentials 常驻标签页上方，不会与常驻标签页重叠；两者之间留出间距并显示居中的细分隔线。
 - 外观：侧栏入口复用 Zen 常驻标签页（Essentials）的 DOM 结构与样式钩子（`.zen-essentials-container .tabbrowser-tab[zen-essential]`、`.tab-background`、`.tab-icon-image`），尺寸、居中、可见性、背景、悬停、圆角和图标尺寸都由 Zen 及当前主题决定，因此切换主题时会和常驻标签页保持一致。
 - URL 可填写完整地址，也可填写 `10.1.80.215:5244`、`localhost:3000` 等主机和端口；未写协议时会补成 `http://`。
 - 设置页内 `Ctrl/Cmd + S` 保存。

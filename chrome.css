@@ -56,6 +56,41 @@
   display: none !important;
 }
 
+/* Breathing room and a centred rule between Quick Launch and Essentials. */
+#zen-quick-launch-divider {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  width: calc(100% + var(--zen-toolbox-padding, 5px) * 2) !important;
+  height: 14px !important;
+  margin-left: calc(-1 * var(--zen-toolbox-padding, 5px)) !important;
+  pointer-events: none !important;
+}
+
+#zen-quick-launch-divider::before {
+  content: "" !important;
+  position: absolute !important;
+  top: calc(50% - 1px) !important;
+  left: calc(var(--zen-toolbox-padding, 5px) + 8px) !important;
+  right: calc(var(--zen-toolbox-padding, 5px) + 8px) !important;
+  height: 1px !important;
+  transform: translateY(-50%) !important;
+  border-radius: 1px !important;
+  background: light-dark(
+    rgba(0, 0, 0, 0.18),
+    rgba(255, 255, 255, 0.18)
+  ) !important;
+}
+
+#zen-quick-launch-container[hidden] + #zen-quick-launch-divider {
+  display: none !important;
+}
+
+:root:not([zen-sidebar-expanded="true"]) #zen-quick-launch-divider {
+  width: 100% !important;
+  height: 10px !important;
+  margin-left: 0 !important;
+}
+
 /* This wrapper carries the same stylesheet hooks as Zen's essentials section,
    so themes that restyle `.zen-essentials-container .tabbrowser-tab` restyle
    the launchers too. `display: contents` keeps the buttons as grid items of
