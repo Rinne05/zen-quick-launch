@@ -947,10 +947,15 @@ ${item.url}
       return false;
     }
 
+    // Essentials are absolutely positioned at the top of the tab strip and the
+    // workspace reserves their height with padding-top. Inserting after
+    // #zen-essentials would put the launchers at the same y position as the
+    // absolutely positioned Essentials grid and overlap it. Being the previous
+    // sibling puts the launchers in normal flow above Essentials instead.
     const essentialsHost = document.getElementById("zen-essentials");
     if (essentialsHost?.parentNode) {
-      if (essentialsHost.nextSibling !== container) {
-        essentialsHost.after(container);
+      if (essentialsHost.previousSibling !== container) {
+        essentialsHost.before(container);
       }
       return true;
     }
