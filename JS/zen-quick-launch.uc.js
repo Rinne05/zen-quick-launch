@@ -7,7 +7,6 @@
   const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
   const PREF_ITEMS = "zen.quicklaunch.items";
-  const PREF_COLUMNS = "zen.quicklaunch.columns";
   const PREF_CTRL_BG = "zen.quicklaunch.ctrlBackground";
   const PREF_MODE = "zen.quicklaunch.mode";
   const PREF_BOOKMARK_FOLDER = "zen.quicklaunch.bookmarkFolder";
@@ -78,9 +77,6 @@
   function ensureDefaults() {
     if (!Services.prefs.prefHasUserValue(PREF_ITEMS)) {
       Services.prefs.setStringPref(PREF_ITEMS, JSON.stringify(DEFAULT_ITEMS));
-    }
-    if (!Services.prefs.prefHasUserValue(PREF_COLUMNS)) {
-      Services.prefs.setIntPref(PREF_COLUMNS, 3);
     }
     if (!Services.prefs.prefHasUserValue(PREF_CTRL_BG)) {
       Services.prefs.setBoolPref(PREF_CTRL_BG, true);
@@ -153,7 +149,6 @@
 
     return {
       items,
-      columns: Math.max(1, Math.min(6, Services.prefs.getIntPref(PREF_COLUMNS, 3))),
       ctrlBackground: Services.prefs.getBoolPref(PREF_CTRL_BG, true),
       mode,
       bookmarkFolder: Services.prefs.getStringPref(
@@ -596,8 +591,12 @@
 
     try {
       const PlacesUtils = await getPlacesUtils();
-      const children =
-        (await PlacesUtils.bookmarks.fetch({ parentGuid: folder })) || [];
+      // fetch() returns only the first result; onResult visits every child.
+      const children = [];
+      await PlacesUtils.bookmarks.fetch(
+        { parentGuid: folder },
+        (node) => children.push(node)
+      );
 
       if (requestId !== state.bookmarkRequestId || !state.loaded) {
         return;
@@ -904,10 +903,20 @@ ${item.url}
     const items =
       config.mode === "bookmarks" ? state.bookmarkItems : config.items;
 
-    container.style.setProperty(
-      "--zen-quick-launch-columns",
-      String(config.columns)
-    );
+    let hackType = 0;
+    if (items.length === 6 || items.length === 9) {
+      hackType = 1;
+    } else if (items.length > 0 && items.length % 2 === 0 && items.length < 8) {
+      hackType = 2;
+    } else if (items.length === 5) {
+      hackType = 3;
+    }
+    if (hackType) {
+      container.dataset.hackType = String(hackType);
+    } else {
+      delete container.dataset.hackType;
+    }
+
     syncItemSize(container);
     grid.replaceChildren();
 
@@ -1026,7 +1035,6 @@ ${item.url}
         }
         if (
           data === PREF_ITEMS ||
-          data === PREF_COLUMNS ||
           data === PREF_CTRL_BG ||
           data === PREF_MODE ||
           data === PREF_BOOKMARK_FOLDER

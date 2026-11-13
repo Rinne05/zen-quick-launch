@@ -1,7 +1,14 @@
 #zen-quick-launch-container {
   box-sizing: border-box !important;
   display: grid !important;
-  grid-template-columns: repeat(var(--zen-quick-launch-columns, 3), minmax(0, 1fr)) !important;
+  /* Same auto-fit rules as .zen-essentials-container. */
+  --zen-quick-launch-min-width: calc(
+    var(--zen-quick-launch-item-size, 46px) + 4px
+  );
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(23.7%, var(--zen-quick-launch-min-width)), 1fr)
+  ) !important;
   gap: var(--zen-space-4, 4px) !important;
   /* Match .zen-essentials-container: it extends one toolbox padding past
      each side so its backgrounds line up with normal tab backgrounds. */
@@ -17,6 +24,30 @@
 :root[zen-single-toolbar="true"] #zen-quick-launch-container:not(:empty) {
   padding-top: var(--zen-space-6, 6px) !important;
   padding-bottom: var(--zen-space-2, 2px) !important;
+}
+
+/* Zen applies these column-count variants to Essentials based on the number
+   of children. Mirror them so mixed counts wrap the same way. */
+#zen-quick-launch-container[data-hack-type="1"] {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(30%, var(--zen-quick-launch-min-width)), auto)
+  ) !important;
+}
+
+#zen-quick-launch-container[data-hack-type="2"] {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(23%, var(--zen-quick-launch-min-width)), 1fr)
+      minmax(max(23%, var(--zen-quick-launch-min-width)), 1fr)
+  ) !important;
+}
+
+#zen-quick-launch-container[data-hack-type="3"] {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(25%, 48px), 1fr)
+  ) !important;
 }
 
 /* The grid display above has !important, so the UA [hidden] rule does not win.

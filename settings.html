@@ -8,15 +8,18 @@
 </head>
 <body>
   <div id="zen-quick-launch-settings">
-    <div class="zql-dialog" role="region" aria-labelledby="zql-title">
+    <div class="zql-page" role="region" aria-labelledby="zql-title">
       <header class="zql-header">
-        <div class="zql-titles">
-          <p class="zql-eyebrow">ZEN QUICK LAUNCH</p>
-          <h1 id="zql-title">Quick Launch 设置</h1>
-          <p class="zql-subtitle">
-            自定义模式使用独立配置；书签模式直接同步所选书签文件夹。
-            点击入口始终创建一个新的普通标签页，只填 IP 和端口时会自动补成 http://。
-          </p>
+        <div class="zql-brand">
+          <div class="zql-brand-mark" aria-hidden="true">QL</div>
+          <div class="zql-titles">
+            <p class="zql-eyebrow">ZEN QUICK LAUNCH</p>
+            <h1 id="zql-title">Quick Launch 设置</h1>
+            <p class="zql-subtitle">
+              自定义模式使用独立配置；书签模式直接同步所选书签文件夹。
+              点击入口始终创建一个新的普通标签页，只填 IP 和端口时会自动补成 http://。
+            </p>
+          </div>
         </div>
         <div class="zql-header-actions">
           <button type="button" class="zql-button" data-action="export">导出 JSON</button>
@@ -28,59 +31,52 @@
         </div>
       </header>
 
-      <div class="zql-toolbar">
-        <div class="zql-toolbar-left">
-          <label class="zql-field">
-            <span>入口来源</span>
-            <select class="zql-mode">
-              <option value="custom">自定义入口</option>
-              <option value="bookmarks">同步书签文件夹</option>
-            </select>
-          </label>
-          <label class="zql-field zql-folder-field" hidden>
-            <span>书签文件夹</span>
-            <select class="zql-bookmark-folder"></select>
-          </label>
-          <label class="zql-field">
-            <span>每行图标数量</span>
-            <select class="zql-columns">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-            </select>
-          </label>
-          <label class="zql-toggle">
-            <input class="zql-ctrl-background" type="checkbox">
-            <span>
-              <strong>Ctrl / Cmd + 左键在后台打开</strong>
-              <small>中键始终在后台打开。</small>
-            </span>
-          </label>
+      <div class="zql-body">
+        <div class="zql-toolbar">
+          <div class="zql-toolbar-left">
+            <label class="zql-field">
+              <span>入口来源</span>
+              <select class="zql-mode">
+                <option value="custom">自定义入口</option>
+                <option value="bookmarks">同步书签文件夹</option>
+              </select>
+            </label>
+            <label class="zql-field zql-folder-field" hidden>
+              <span>书签文件夹</span>
+              <select class="zql-bookmark-folder"></select>
+            </label>
+            <label class="zql-toggle">
+              <input class="zql-ctrl-background" type="checkbox">
+              <span>
+                <strong>Ctrl / Cmd + 左键在后台打开</strong>
+                <small>中键始终在后台打开。</small>
+              </span>
+            </label>
+          </div>
+          <button type="button" class="zql-button zql-primary zql-add-button"
+                  data-action="add">＋ 添加入口</button>
         </div>
-        <button type="button" class="zql-button zql-primary zql-add-button"
-                data-action="add">＋ 添加入口</button>
-      </div>
 
-      <div class="zql-bookmark-info" hidden>
-        <p>
-          侧栏会显示所选文件夹中的书签（不显示子文件夹和分隔符）。
-          在侧栏拖动入口会直接调整书签顺序，书签管理器中的改动也会实时同步回来。
-        </p>
-        <ol class="zql-bookmark-list"></ol>
-        <p class="zql-bookmark-empty" hidden>该文件夹还没有书签。</p>
-        <p class="zql-bookmark-error" hidden></p>
-      </div>
+        <div class="zql-bookmark-info" hidden>
+          <p>
+            侧栏会显示所选文件夹中的书签（不显示子文件夹和分隔符）。
+            在侧栏拖动入口会直接调整书签顺序，书签管理器中的改动也会实时同步回来。
+          </p>
+          <ol class="zql-bookmark-list"></ol>
+          <p class="zql-bookmark-empty" hidden>
+            该文件夹中没有书签（子文件夹不会展开）。
+          </p>
+          <p class="zql-bookmark-error" hidden></p>
+        </div>
 
-      <div class="zql-items" aria-label="Quick Launch 入口"></div>
+        <div class="zql-items" aria-label="Quick Launch 入口"></div>
 
-      <div class="zql-empty" hidden="hidden">
-        <h3>还没有快捷入口</h3>
-        <p>添加一个 URL 后，它会立即显示在 Zen 左侧栏。</p>
-        <button type="button" class="zql-button zql-primary"
-                data-action="add">添加第一个入口</button>
+        <div class="zql-empty" hidden="hidden">
+          <h3>还没有快捷入口</h3>
+          <p>添加一个 URL 后，它会立即显示在 Zen 左侧栏。</p>
+          <button type="button" class="zql-button zql-primary"
+                  data-action="add">添加第一个入口</button>
+        </div>
       </div>
 
       <footer class="zql-footer">

@@ -13,7 +13,6 @@
   const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
   const PREF_ITEMS = "zen.quicklaunch.items";
-  const PREF_COLUMNS = "zen.quicklaunch.columns";
   const PREF_CTRL_BG = "zen.quicklaunch.ctrlBackground";
   const PREF_MODE = "zen.quicklaunch.mode";
   const PREF_BOOKMARK_FOLDER = "zen.quicklaunch.bookmarkFolder";
@@ -190,7 +189,6 @@
       status: root.querySelector(".zql-status"),
       items: root.querySelector(".zql-items"),
       empty: root.querySelector(".zql-empty"),
-      columns: root.querySelector(".zql-columns"),
       ctrlBackground: root.querySelector(".zql-ctrl-background"),
       importInput: root.querySelector(".zql-import-input"),
       mode: root.querySelector(".zql-mode"),
@@ -265,10 +263,7 @@
       return;
     }
 
-    if (
-      event.target.classList.contains("zql-columns") ||
-      event.target.classList.contains("zql-ctrl-background")
-    ) {
+    if (event.target.classList.contains("zql-ctrl-background")) {
       markDirty();
       return;
     }
@@ -448,8 +443,12 @@
       }
       seen.add(guid);
 
-      const children =
-        (await PlacesUtils.bookmarks.fetch({ parentGuid: guid })) || [];
+      // fetch() returns only the first result; onResult visits every child.
+      const children = [];
+      await PlacesUtils.bookmarks.fetch(
+        { parentGuid: guid },
+        (node) => children.push(node)
+      );
       for (const child of children) {
         if (child.type !== PlacesUtils.bookmarks.TYPE_FOLDER) {
           continue;
@@ -539,8 +538,11 @@
 
     try {
       const PlacesUtils = await getPlacesUtils();
-      const children =
-        (await PlacesUtils.bookmarks.fetch({ parentGuid: folder })) || [];
+      const children = [];
+      await PlacesUtils.bookmarks.fetch(
+        { parentGuid: folder },
+        (node) => children.push(node)
+      );
       if (requestId !== state.bookmarkRefreshId || !isBookmarksMode()) {
         return;
       }
@@ -595,9 +597,6 @@
       }))
     );
 
-    state.refs.columns.value = String(
-      Math.max(1, Math.min(6, Services.prefs.getIntPref(PREF_COLUMNS, 3)))
-    );
     state.refs.ctrlBackground.checked =
       Services.prefs.getBoolPref(PREF_CTRL_BG, true);
 
@@ -772,10 +771,6 @@
     );
 
     Services.prefs.setStringPref(PREF_ITEMS, JSON.stringify(clean));
-    Services.prefs.setIntPref(
-      PREF_COLUMNS,
-      Number(state.refs.columns.value) || 3
-    );
     Services.prefs.setBoolPref(
       PREF_CTRL_BG,
       state.refs.ctrlBackground.checked
@@ -805,7 +800,6 @@
       format: "zen-quick-launch",
       mode: isBookmarksMode() ? "bookmarks" : "custom",
       bookmarkFolder: state.refs.bookmarkFolder.value,
-      columns: Number(state.refs.columns.value) || 3,
       ctrlBackground: state.refs.ctrlBackground.checked,
       items: state.model,
     };
@@ -845,12 +839,6 @@
           enabled: item?.enabled !== false,
         }))
       );
-
-      if (payload.columns) {
-        state.refs.columns.value = String(
-          Math.max(1, Math.min(6, Number(payload.columns) || 3))
-        );
-      }
 
       if (typeof payload.ctrlBackground === "boolean") {
         state.refs.ctrlBackground.checked = payload.ctrlBackground;
@@ -899,7 +887,6 @@
 
     state.model = cloneDefaults();
     state.refs.mode.value = "custom";
-    state.refs.columns.value = "3";
     state.refs.ctrlBackground.checked = true;
     if (
       Array.from(state.refs.bookmarkFolder.options).some(
