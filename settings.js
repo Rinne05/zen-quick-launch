@@ -1,21 +1,23 @@
-// Quick Launch settings panel.
+// Quick Launch settings page.
 //
-// The panel is injected into the browser window instead of living on its own
-// about: page: recent Firefox/Zen builds no longer run about: modules that
-// were registered at runtime from JS, so a privileged settings page cannot be
-// opened as a tab anymore. A panel in browser.xhtml has the same privileges
-// and does not depend on any registry.
+// Opened as a normal privileged chrome page at
+// chrome://zen-quick-launch/content/settings.html. Keeping the page in its own
+// tab means it survives sidebar reloads and can be bookmarked like any other
+// page.
 (() => {
   "use strict";
 
-  const INSTANCE_KEY = "__zenQuickLaunchSettings";
-  const GLOBAL_API_KEY = "__zenQuickLaunchSettingsAPI";
   const PANEL_ID = "zen-quick-launch-settings";
+  const TEMPLATE_ID = "zql-row-template";
+  const OPEN_URL_TOPIC = "zen-quick-launch:open-url";
   const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
   const PREF_ITEMS = "zen.quicklaunch.items";
   const PREF_COLUMNS = "zen.quicklaunch.columns";
   const PREF_CTRL_BG = "zen.quicklaunch.ctrlBackground";
+  const PREF_MODE = "zen.quicklaunch.mode";
+  const PREF_BOOKMARK_FOLDER = "zen.quicklaunch.bookmarkFolder";
+  const DEFAULT_BOOKMARK_FOLDER = "toolbar_____";
 
   const DEFAULT_ICON =
     "chrome://global/skin/icons/defaultFavicon.svg";
@@ -29,146 +31,32 @@
     { id: "default-9000", name: "9000", url: "http://192.168.1.100:9000", icon: "auto", enabled: true },
   ];
 
-  const PANEL_HTML = `
-    <div class="zql-backdrop" data-action="close"></div>
-    <div class="zql-dialog" role="dialog" aria-modal="true" aria-labelledby="zql-title">
-      <header class="zql-header">
-        <div class="zql-titles">
-          <p class="zql-eyebrow">ZEN QUICK LAUNCH</p>
-          <h1 id="zql-title">Quick Launch 设置</h1>
-          <p class="zql-subtitle">
-            这些入口不是书签，也不是标签页。点击入口始终创建一个新的标签页。
-            只填 IP 和端口时会自动补成 http://。
-          </p>
-        </div>
-        <div class="zql-header-actions">
-          <button type="button" class="zql-button" data-action="export">导出 JSON</button>
-          <label class="zql-button zql-file-button">
-            导入 JSON
-            <input class="zql-import-input" type="file"
-                   accept="application/json,.json" />
-          </label>
-          <button type="button" class="zql-button zql-icon-button"
-                  data-action="close" aria-label="关闭设置" title="关闭">×</button>
-        </div>
-      </header>
-
-      <div class="zql-toolbar">
-        <div class="zql-toolbar-left">
-          <label class="zql-field">
-            <span>每行图标数量</span>
-            <select class="zql-columns">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-            </select>
-          </label>
-          <label class="zql-toggle">
-            <input class="zql-ctrl-background" type="checkbox" />
-            <span>
-              <strong>Ctrl / Cmd + 左键在后台打开</strong>
-              <small>中键始终在后台打开。</small>
-            </span>
-          </label>
-        </div>
-        <button type="button" class="zql-button zql-primary"
-                data-action="add">＋ 添加入口</button>
-      </div>
-
-      <div class="zql-items" aria-label="Quick Launch 入口"></div>
-
-      <div class="zql-empty" hidden="hidden">
-        <h3>还没有快捷入口</h3>
-        <p>添加一个 URL 后，它会立即显示在 Zen 左侧栏。</p>
-        <button type="button" class="zql-button zql-primary"
-                data-action="add">添加第一个入口</button>
-      </div>
-
-      <footer class="zql-footer">
-        <div class="zql-status" role="status" aria-live="polite">正在加载设置…</div>
-        <div class="zql-footer-actions">
-          <button type="button" class="zql-button zql-danger"
-                  data-action="reset">恢复默认</button>
-          <button type="button" class="zql-button zql-primary"
-                  data-action="save">保存并应用</button>
-        </div>
-      </footer>
-    </div>`;
-
-  const ROW_HTML = `
-    <article class="zql-item">
-      <div class="zql-drag" title="拖动排序" aria-label="拖动排序">⋮⋮</div>
-      <label class="zql-enabled-wrap" title="启用">
-        <input class="zql-enabled" type="checkbox" />
-      </label>
-      <div class="zql-preview" aria-hidden="true">
-        <img class="zql-preview-image" alt="" draggable="false" />
-      </div>
-      <div class="zql-fields">
-        <label>
-          <span>名称</span>
-          <input class="zql-name" type="text" placeholder="例如 PVE" />
-        </label>
-        <label>
-          <span>URL / IP / 端口</span>
-          <input class="zql-url" type="text"
-                 placeholder="https://192.168.1.10:8006 或 10.1.80.215:5244" />
-        </label>
-        <label>
-          <span>图标</span>
-          <input class="zql-icon" type="text" placeholder="auto 或图标 URL" />
-        </label>
-      </div>
-      <div class="zql-item-actions">
-        <button type="button" class="zql-button" data-action="test"
-                title="在新标签页打开">打开</button>
-        <button type="button" class="zql-button" data-action="duplicate"
-                title="复制此入口">复制</button>
-        <button type="button" class="zql-button zql-danger" data-action="delete"
-                title="删除">删除</button>
-      </div>
-    </article>`;
-
-  if (window[INSTANCE_KEY]) {
-    return;
-  }
-
   const state = {
-    loaded: true,
-    panel: null,
     refs: null,
     rowTemplate: null,
     model: [],
     dirty: false,
     dragId: null,
     dragArmed: false,
-    tabObserver: null,
     keyListener: null,
+    bookmarkRefreshId: 0,
   };
-  window[INSTANCE_KEY] = state;
 
   const warn = (...args) =>
     console.warn("[Zen Quick Launch]", ...args);
 
-  // browser.xhtml is an XML document whose fragment parser drops form
-  // controls, so innerHTML cannot be used to build the panel. DOMParser keeps
-  // the markup intact and importNode adopts it into this document.
-  function parseMarkup(source) {
-    const doc = new DOMParser().parseFromString(
-      `<root xmlns="${XHTML_NS}">${source}</root>`,
-      "application/xhtml+xml"
-    );
+  let placesUtilsPromise = null;
 
-    const error = doc.querySelector("parsererror");
-    if (error) {
-      warn("Invalid settings markup:", error.textContent);
-      return null;
+  function getPlacesUtils() {
+    if (!placesUtilsPromise) {
+      placesUtilsPromise = Promise.resolve().then(() => {
+        const { PlacesUtils } = ChromeUtils.importESModule(
+          "resource://gre/modules/PlacesUtils.sys.mjs"
+        );
+        return PlacesUtils;
+      });
     }
-
-    return document.importNode(doc.documentElement, true);
+    return placesUtilsPromise;
   }
 
   function makeId() {
@@ -224,43 +112,6 @@
     return clean;
   }
 
-  function stripFragment(url) {
-    const value = String(url || "");
-    const index = value.indexOf("#");
-    return index === -1 ? value : value.slice(0, index);
-  }
-
-  // Mirrors the sidebar: when the URL is open in a tab, show the same favicon
-  // the tab strip shows instead of the icon stored in Places.
-  function currentTabIcon(url) {
-    const wanted = stripFragment(url);
-    let looseMatch = "";
-
-    for (const tab of window.gBrowser?.tabs || []) {
-      let spec = "";
-      try {
-        spec = tab.linkedBrowser?.currentURI?.spec || "";
-      } catch (_error) {
-        spec = "";
-      }
-
-      const image = spec ? tab.getAttribute("image") || "" : "";
-      if (!image) {
-        continue;
-      }
-
-      if (spec === url) {
-        return image;
-      }
-
-      if (!looseMatch && stripFragment(spec) === wanted) {
-        looseMatch = image;
-      }
-    }
-
-    return looseMatch;
-  }
-
   function iconFor(item) {
     const custom = String(item.icon || "").trim();
     if (custom && custom !== "auto") {
@@ -268,11 +119,6 @@
     }
 
     const url = normalizeUrl(item.url);
-    const live = currentTabIcon(url);
-    if (live) {
-      return live;
-    }
-
     try {
       const uri = Services.io.newURI(url);
       if (uri.scheme === "http" || uri.scheme === "https") {
@@ -320,53 +166,6 @@
     loadIcon(image, src);
   }
 
-  function refreshPreviews() {
-    if (!state.panel || state.panel.hidden || !state.refs) {
-      return;
-    }
-
-    for (const article of state.refs.items.children) {
-      const item = state.model.find(
-        (entry) => entry.id === article.dataset.id
-      );
-      if (item) {
-        previewFor(item, article);
-      }
-    }
-  }
-
-  function onTabChange(event) {
-    if (
-      event.type === "TabAttrModified" &&
-      !event.detail?.changed?.includes("image")
-    ) {
-      return;
-    }
-    requestAnimationFrame(refreshPreviews);
-  }
-
-  function attachTabObservers() {
-    if (state.tabObserver) {
-      return;
-    }
-
-    state.tabObserver = onTabChange;
-    window.addEventListener("TabAttrModified", state.tabObserver);
-    window.addEventListener("TabClose", state.tabObserver);
-    window.addEventListener("TabBrowserDiscarded", state.tabObserver);
-  }
-
-  function detachTabObservers() {
-    if (!state.tabObserver) {
-      return;
-    }
-
-    window.removeEventListener("TabAttrModified", state.tabObserver);
-    window.removeEventListener("TabClose", state.tabObserver);
-    window.removeEventListener("TabBrowserDiscarded", state.tabObserver);
-    state.tabObserver = null;
-  }
-
   function setStatus(message = "", type = "") {
     if (!state.refs) {
       return;
@@ -380,43 +179,35 @@
     setStatus("有尚未保存的修改");
   }
 
-  function ensurePanel() {
-    if (state.panel?.isConnected) {
-      return state.panel;
+  function bindDom() {
+    const root = document.getElementById(PANEL_ID);
+    const template = document.getElementById(TEMPLATE_ID);
+    if (!root || !template) {
+      throw new Error("Settings markup is incomplete.");
     }
 
-    const panelMarkup = parseMarkup(PANEL_HTML);
-    const rowMarkup = parseMarkup(ROW_HTML);
-    if (!panelMarkup || !rowMarkup) {
-      return null;
-    }
-
-    const panel = document.createElementNS(XHTML_NS, "div");
-    panel.id = PANEL_ID;
-    panel.hidden = true;
-    while (panelMarkup.firstChild) {
-      panel.appendChild(panelMarkup.firstChild);
-    }
-
-    document.documentElement.appendChild(panel);
-
-    state.panel = panel;
-    state.rowTemplate = rowMarkup.firstElementChild;
     state.refs = {
-      status: panel.querySelector(".zql-status"),
-      items: panel.querySelector(".zql-items"),
-      empty: panel.querySelector(".zql-empty"),
-      columns: panel.querySelector(".zql-columns"),
-      ctrlBackground: panel.querySelector(".zql-ctrl-background"),
-      importInput: panel.querySelector(".zql-import-input"),
+      status: root.querySelector(".zql-status"),
+      items: root.querySelector(".zql-items"),
+      empty: root.querySelector(".zql-empty"),
+      columns: root.querySelector(".zql-columns"),
+      ctrlBackground: root.querySelector(".zql-ctrl-background"),
+      importInput: root.querySelector(".zql-import-input"),
+      mode: root.querySelector(".zql-mode"),
+      folderField: root.querySelector(".zql-folder-field"),
+      bookmarkFolder: root.querySelector(".zql-bookmark-folder"),
+      bookmarkInfo: root.querySelector(".zql-bookmark-info"),
+      bookmarkList: root.querySelector(".zql-bookmark-list"),
+      bookmarkEmpty: root.querySelector(".zql-bookmark-empty"),
+      bookmarkError: root.querySelector(".zql-bookmark-error"),
+      addButton: root.querySelector(".zql-add-button"),
     };
+    state.rowTemplate = template.content.firstElementChild;
 
-    panel.addEventListener("click", onPanelClick);
-    panel.addEventListener("input", onPanelInput);
-    panel.addEventListener("change", onPanelChange);
+    root.addEventListener("click", onPanelClick);
+    root.addEventListener("input", onPanelInput);
+    root.addEventListener("change", onPanelChange);
     state.refs.importInput.addEventListener("change", onImportPicked);
-
-    return panel;
   }
 
   function onPanelClick(event) {
@@ -427,9 +218,6 @@
 
     const article = actionEl.closest(".zql-item");
     switch (actionEl.dataset.action) {
-      case "close":
-        close();
-        break;
       case "add":
         addItem();
         break;
@@ -464,6 +252,19 @@
   }
 
   function onPanelChange(event) {
+    if (event.target.classList.contains("zql-mode")) {
+      updateModeVisibility();
+      refreshBookmarkPreview();
+      markDirty();
+      return;
+    }
+
+    if (event.target.classList.contains("zql-bookmark-folder")) {
+      refreshBookmarkPreview();
+      markDirty();
+      return;
+    }
+
     if (
       event.target.classList.contains("zql-columns") ||
       event.target.classList.contains("zql-ctrl-background")
@@ -593,6 +394,8 @@
 
       const [moved] = state.model.splice(from, 1);
       state.model.splice(to, 0, moved);
+      state.dragId = null;
+      state.dragArmed = false;
       render();
       setStatus("顺序已修改，点击“保存并应用”后生效");
       state.dirty = true;
@@ -612,6 +415,157 @@
 
     empty.hidden = state.model.length !== 0;
     items.hidden = state.model.length === 0;
+    updateModeVisibility();
+  }
+
+  function isBookmarksMode() {
+    return state.refs.mode.value === "bookmarks";
+  }
+
+  function updateModeVisibility() {
+    const bookmarksMode = isBookmarksMode();
+    state.refs.folderField.hidden = !bookmarksMode;
+    state.refs.bookmarkInfo.hidden = !bookmarksMode;
+    state.refs.addButton.hidden = bookmarksMode;
+
+    if (bookmarksMode) {
+      state.refs.items.hidden = true;
+      state.refs.empty.hidden = true;
+    } else {
+      state.refs.items.hidden = state.model.length === 0;
+      state.refs.empty.hidden = state.model.length !== 0;
+    }
+  }
+
+  async function listBookmarkFolders() {
+    const PlacesUtils = await getPlacesUtils();
+    const folders = [];
+    const seen = new Set();
+
+    const walk = async (guid, parents) => {
+      if (!guid || seen.has(guid)) {
+        return;
+      }
+      seen.add(guid);
+
+      const children =
+        (await PlacesUtils.bookmarks.fetch({ parentGuid: guid })) || [];
+      for (const child of children) {
+        if (child.type !== PlacesUtils.bookmarks.TYPE_FOLDER) {
+          continue;
+        }
+        const title = String(child.title || "未命名文件夹");
+        const path = [...parents, title];
+        folders.push({ guid: child.guid, path: path.join(" / ") });
+        await walk(child.guid, path);
+      }
+    };
+
+    const roots = [
+      [PlacesUtils.bookmarks.toolbarGuid, "书签工具栏"],
+      [PlacesUtils.bookmarks.menuGuid, "书签菜单"],
+      [PlacesUtils.bookmarks.unfiledGuid, "其他书签"],
+      [PlacesUtils.bookmarks.mobileGuid, "移动设备书签"],
+    ];
+
+    for (const [guid, title] of roots) {
+      folders.push({ guid, path: title });
+      try {
+        await walk(guid, [title]);
+      } catch (error) {
+        warn(`Could not list subfolders of ${title}.`, error);
+      }
+    }
+
+    return folders;
+  }
+
+  async function populateFolderOptions() {
+    const select = state.refs.bookmarkFolder;
+    const saved = Services.prefs.getStringPref(
+      PREF_BOOKMARK_FOLDER,
+      DEFAULT_BOOKMARK_FOLDER
+    );
+
+    select.disabled = true;
+    select.replaceChildren();
+
+    try {
+      const folders = await listBookmarkFolders();
+      for (const folder of folders) {
+        select.add(new Option(folder.path, folder.guid));
+      }
+
+      if (saved && !folders.some((folder) => folder.guid === saved)) {
+        select.add(new Option("（已选文件夹不可用）", saved));
+      }
+
+      select.value = saved || folders[0]?.guid || "";
+      state.refs.bookmarkError.hidden = true;
+    } catch (error) {
+      console.error("[Zen Quick Launch] Could not list bookmark folders:", error);
+      select.add(new Option("无法读取书签文件夹", ""));
+      select.value = "";
+      state.refs.bookmarkError.textContent =
+        "无法读取书签文件夹；请确认设置页是通过 chrome:// 地址打开的。";
+      state.refs.bookmarkError.hidden = false;
+    } finally {
+      select.disabled = false;
+    }
+  }
+
+  async function refreshBookmarkPreview() {
+    if (!state.refs) {
+      return;
+    }
+
+    const requestId = ++state.bookmarkRefreshId;
+    const list = state.refs.bookmarkList;
+    const empty = state.refs.bookmarkEmpty;
+    const error = state.refs.bookmarkError;
+    list.replaceChildren();
+    empty.hidden = true;
+    error.hidden = true;
+
+    if (!isBookmarksMode()) {
+      return;
+    }
+
+    const folder = state.refs.bookmarkFolder.value;
+    if (!folder) {
+      empty.hidden = false;
+      return;
+    }
+
+    try {
+      const PlacesUtils = await getPlacesUtils();
+      const children =
+        (await PlacesUtils.bookmarks.fetch({ parentGuid: folder })) || [];
+      if (requestId !== state.bookmarkRefreshId || !isBookmarksMode()) {
+        return;
+      }
+
+      const bookmarks = children.filter(
+        (node) =>
+          node.type === PlacesUtils.bookmarks.TYPE_BOOKMARK && node.url
+      );
+
+      for (const bookmark of bookmarks) {
+        const li = document.createElement("li");
+        li.textContent =
+          bookmark.title ||
+          bookmark.url?.href ||
+          String(bookmark.url || "");
+        list.appendChild(li);
+      }
+
+      empty.hidden = bookmarks.length !== 0;
+    } catch (err) {
+      if (requestId === state.bookmarkRefreshId) {
+        error.textContent = "无法读取该书签文件夹。";
+        error.hidden = false;
+      }
+    }
   }
 
   function loadPrefs() {
@@ -647,8 +601,29 @@
     state.refs.ctrlBackground.checked =
       Services.prefs.getBoolPref(PREF_CTRL_BG, true);
 
+    const mode = Services.prefs.getStringPref(PREF_MODE, "custom");
+    state.refs.mode.value = mode === "bookmarks" ? "bookmarks" : "custom";
+
+    const folder = Services.prefs.getStringPref(
+      PREF_BOOKMARK_FOLDER,
+      DEFAULT_BOOKMARK_FOLDER
+    );
+    if (
+      folder &&
+      !Array.from(state.refs.bookmarkFolder.options).some(
+        (option) => option.value === folder
+      )
+    ) {
+      state.refs.bookmarkFolder.add(
+        new Option("（已选文件夹不可用）", folder)
+      );
+    }
+    state.refs.bookmarkFolder.value =
+      folder || state.refs.bookmarkFolder.value;
+
     state.dirty = false;
     render();
+    refreshBookmarkPreview();
   }
 
   function addItem() {
@@ -700,6 +675,30 @@
     state.dirty = true;
   }
 
+  // Chrome documents usually run in the parent process, where the browser
+  // window is directly reachable. Remote chrome pages use the message manager
+  // as a fallback, and a plain window.open is the last resort.
+  function openInTab(url) {
+    try {
+      const browserWindow = Services.wm.getMostRecentWindow(
+        "navigator:browser"
+      );
+      if (typeof browserWindow?.openTrustedLinkIn === "function") {
+        browserWindow.openTrustedLinkIn(url, "tab");
+        return;
+      }
+    } catch (error) {
+      warn("Direct browser window access failed.", error);
+    }
+
+    try {
+      Services.cpmm.sendAsyncMessage(OPEN_URL_TOPIC, { url });
+    } catch (error) {
+      warn("Could not ask the browser window to open the URL.", error);
+      window.open(url, "_blank");
+    }
+  }
+
   function testItem(article) {
     if (!article) {
       return;
@@ -717,13 +716,7 @@
       return;
     }
     input.classList.remove("zql-invalid");
-
-    try {
-      window.openTrustedLinkIn(target, "tab");
-    } catch (error) {
-      console.error("[Zen Quick Launch] Failed to open URL:", error);
-      setStatus("打开失败，请检查 URL。", "error");
-    }
+    openInTab(target);
   }
 
   function validate() {
@@ -748,8 +741,16 @@
   }
 
   function save() {
-    if (!validate()) {
+    const mode = isBookmarksMode() ? "bookmarks" : "custom";
+    const folder = state.refs.bookmarkFolder.value;
+
+    if (mode === "custom" && !validate()) {
       setStatus("存在已启用但 URL 无效的入口，请先修正。", "error");
+      return;
+    }
+
+    if (mode === "bookmarks" && !folder) {
+      setStatus("请先选择一个书签文件夹。", "error");
       return;
     }
 
@@ -779,6 +780,8 @@
       PREF_CTRL_BG,
       state.refs.ctrlBackground.checked
     );
+    Services.prefs.setStringPref(PREF_MODE, mode);
+    Services.prefs.setStringPref(PREF_BOOKMARK_FOLDER, folder);
 
     try {
       // set*Pref only lives in memory until Firefox flushes, so write the file
@@ -791,6 +794,7 @@
     state.model = clean;
     state.dirty = false;
     render();
+    refreshBookmarkPreview();
     setStatus("已保存，并已实时应用到 Zen 侧栏。", "ok");
   }
 
@@ -799,6 +803,8 @@
 
     const payload = {
       format: "zen-quick-launch",
+      mode: isBookmarksMode() ? "bookmarks" : "custom",
+      bookmarkFolder: state.refs.bookmarkFolder.value,
       columns: Number(state.refs.columns.value) || 3,
       ctrlBackground: state.refs.ctrlBackground.checked,
       items: state.model,
@@ -811,7 +817,7 @@
     const link = document.createElementNS(XHTML_NS, "a");
     link.href = url;
     link.download = "zen-quick-launch.json";
-    document.documentElement.appendChild(link);
+    document.body.appendChild(link);
     link.click();
     link.remove();
 
@@ -850,7 +856,29 @@
         state.refs.ctrlBackground.checked = payload.ctrlBackground;
       }
 
+      state.refs.mode.value =
+        payload.mode === "bookmarks" ? "bookmarks" : "custom";
+
+      if (
+        payload.mode === "bookmarks" &&
+        typeof payload.bookmarkFolder === "string" &&
+        payload.bookmarkFolder
+      ) {
+        const select = state.refs.bookmarkFolder;
+        if (
+          !Array.from(select.options).some(
+            (option) => option.value === payload.bookmarkFolder
+          )
+        ) {
+          select.add(
+            new Option("（已导入文件夹）", payload.bookmarkFolder)
+          );
+        }
+        select.value = payload.bookmarkFolder;
+      }
+
       render();
+      refreshBookmarkPreview();
       setStatus("已导入。检查内容后点击“保存并应用”。", "ok");
       state.dirty = true;
     } catch (error) {
@@ -860,18 +888,28 @@
   }
 
   function resetDefaults() {
-    if (
-      !window.confirm(
-        "恢复默认的 4 个示例入口？当前未保存修改会丢失。"
-      )
-    ) {
+    const confirmed = Services.prompt.confirm(
+      window,
+      "Zen Quick Launch",
+      "恢复默认的 4 个示例入口？当前未保存修改会丢失。"
+    );
+    if (!confirmed) {
       return;
     }
 
     state.model = cloneDefaults();
+    state.refs.mode.value = "custom";
     state.refs.columns.value = "3";
     state.refs.ctrlBackground.checked = true;
+    if (
+      Array.from(state.refs.bookmarkFolder.options).some(
+        (option) => option.value === DEFAULT_BOOKMARK_FOLDER
+      )
+    ) {
+      state.refs.bookmarkFolder.value = DEFAULT_BOOKMARK_FOLDER;
+    }
     render();
+    refreshBookmarkPreview();
     setStatus("已恢复默认预览。点击“保存并应用”后生效。");
     state.dirty = true;
   }
@@ -882,13 +920,6 @@
     }
 
     state.keyListener = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-        return;
-      }
-
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "s"
@@ -902,90 +933,46 @@
     window.addEventListener("keydown", state.keyListener, true);
   }
 
-  function detachKeyListener() {
-    if (!state.keyListener) {
+  function highlightFromHash() {
+    const raw = decodeURIComponent(location.hash.replace(/^#/, ""));
+    if (!raw) {
       return;
     }
-    window.removeEventListener("keydown", state.keyListener, true);
-    state.keyListener = null;
+
+    const id = raw.startsWith("entry=") ? raw.slice(6) : raw;
+    const article = Array.from(state.refs.items.children).find(
+      (entry) => entry.dataset.id === id
+    );
+    if (!article) {
+      return;
+    }
+
+    article.scrollIntoView({ behavior: "smooth", block: "center" });
+    article.classList.add("zql-highlight");
+    setTimeout(() => {
+      article.classList.remove("zql-highlight");
+    }, 2500);
   }
 
-  function open() {
-    if (!state.loaded) {
+  async function init() {
+    try {
+      bindDom();
+    } catch (error) {
+      console.error("[Zen Quick Launch] Settings page failed to load:", error);
       return;
     }
 
-    const panel = ensurePanel();
-    if (!panel) {
-      return;
-    }
-
-    if (!panel.hidden) {
-      panel.querySelector(".zql-item input, .zql-item button")?.focus();
-      return;
-    }
-
-    // Re-read the prefs only when there is nothing to lose, so a panel that was
-    // closed by accident keeps the edits the user has not saved yet.
-    if (!state.dirty) {
-      loadPrefs();
-      setStatus("设置已加载。", "ok");
-    }
-
-    panel.hidden = false;
-    attachTabObservers();
+    await populateFolderOptions();
+    loadPrefs();
+    setStatus("设置已加载。Ctrl/Cmd + S 可保存。", "ok");
     attachKeyListener();
-
-    panel
-      .querySelector(".zql-name, .zql-columns, [data-action='add']")
-      ?.focus();
-    refreshPreviews();
+    highlightFromHash();
+    window.addEventListener("hashchange", highlightFromHash);
   }
 
-  function close() {
-    if (!state.panel || state.panel.hidden) {
-      return;
-    }
-
-    state.panel.hidden = true;
-    detachTabObservers();
-    detachKeyListener();
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", init, { once: true });
+  } else {
+    init();
   }
-
-  function cleanup() {
-    if (!state.loaded) {
-      return;
-    }
-    state.loaded = false;
-
-    detachTabObservers();
-    detachKeyListener();
-
-    try {
-      state.panel?.remove();
-    } catch (_error) {}
-    state.panel = null;
-    state.refs = null;
-    state.rowTemplate = null;
-
-    try {
-      delete window[INSTANCE_KEY];
-      delete window[GLOBAL_API_KEY];
-    } catch (_error) {}
-  }
-
-  window[GLOBAL_API_KEY] = {
-    open,
-    close,
-    get isOpen() {
-      return !!state.panel && !state.panel.hidden;
-    },
-  };
-
-  window.addEventListener("unload", cleanup, { once: true });
-  if (typeof window.addUnloadListener === "function") {
-    window.addUnloadListener(cleanup);
-  }
-
-  console.log("[Zen Quick Launch] Settings panel ready");
 })();
