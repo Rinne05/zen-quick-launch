@@ -41,10 +41,21 @@
                 <option value="bookmarks">同步书签文件夹</option>
               </select>
             </label>
-            <label class="zql-field zql-folder-field" hidden>
+            <div class="zql-field zql-folder-field" hidden>
               <span>书签文件夹</span>
-              <select class="zql-bookmark-folder"></select>
-            </label>
+              <div class="zql-folder-picker">
+                <button type="button" class="zql-folder-button"
+                        aria-haspopup="tree" aria-expanded="false">
+                  <span class="zql-folder-current">选择文件夹…</span>
+                  <span class="zql-folder-arrow" aria-hidden="true">⌄</span>
+                </button>
+                <div class="zql-folder-popover" hidden>
+                  <div class="zql-folder-tree" role="tree"
+                       aria-label="书签文件夹"></div>
+                </div>
+              </div>
+              <input class="zql-bookmark-folder" type="hidden" value="">
+            </div>
             <label class="zql-toggle">
               <input class="zql-ctrl-background" type="checkbox">
               <span>
@@ -58,11 +69,29 @@
         </div>
 
         <div class="zql-bookmark-info" hidden>
-          <p>
-            侧栏会显示所选文件夹中的书签（不显示子文件夹和分隔符）。
-            在侧栏拖动入口会直接调整书签顺序，书签管理器中的改动也会实时同步回来。
-          </p>
-          <ol class="zql-bookmark-list"></ol>
+          <div class="zql-bookmark-head">
+            <div>
+              <strong>文件夹书签</strong>
+              <small>
+                直接编辑实际书签，修改会立即同步到书签管理器。
+                拖动左侧手柄可调整书签顺序。
+              </small>
+            </div>
+            <button type="button" class="zql-button"
+                    data-action="bookmark-add-toggle">＋ 添加书签</button>
+          </div>
+
+          <div class="zql-bookmark-add" hidden>
+            <input class="zql-bookmark-new-name" type="text"
+                   placeholder="书签名称">
+            <input class="zql-bookmark-new-url" type="text"
+                   placeholder="https://example.com">
+            <button type="button" class="zql-button zql-primary"
+                    data-action="bookmark-add">添加</button>
+          </div>
+
+          <div class="zql-bookmark-editor" aria-label="文件夹书签"></div>
+
           <p class="zql-bookmark-empty" hidden>
             该文件夹中没有书签（子文件夹不会展开）。
           </p>

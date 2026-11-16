@@ -39,6 +39,12 @@
     dragArmed: false,
     keyListener: null,
     bookmarkRefreshId: 0,
+    folderRoots: [],
+    folderNodes: new Map(),
+    expandedFolders: new Set(),
+    bookmarkChildren: [],
+    bookmarkDragGuid: null,
+    bookmarkDrop: null,
   };
 
   const warn = (...args) =>
@@ -194,8 +200,16 @@
       mode: root.querySelector(".zql-mode"),
       folderField: root.querySelector(".zql-folder-field"),
       bookmarkFolder: root.querySelector(".zql-bookmark-folder"),
+      folderPicker: root.querySelector(".zql-folder-picker"),
+      folderButton: root.querySelector(".zql-folder-button"),
+      folderPopover: root.querySelector(".zql-folder-popover"),
+      folderTree: root.querySelector(".zql-folder-tree"),
+      folderCurrent: root.querySelector(".zql-folder-current"),
       bookmarkInfo: root.querySelector(".zql-bookmark-info"),
-      bookmarkList: root.querySelector(".zql-bookmark-list"),
+      bookmarkEditor: root.querySelector(".zql-bookmark-editor"),
+      bookmarkAdd: root.querySelector(".zql-bookmark-add"),
+      bookmarkNewName: root.querySelector(".zql-bookmark-new-name"),
+      bookmarkNewUrl: root.querySelector(".zql-bookmark-new-url"),
       bookmarkEmpty: root.querySelector(".zql-bookmark-empty"),
       bookmarkError: root.querySelector(".zql-bookmark-error"),
       addButton: root.querySelector(".zql-add-button"),
@@ -205,7 +219,13 @@
     root.addEventListener("click", onPanelClick);
     root.addEventListener("input", onPanelInput);
     root.addEventListener("change", onPanelChange);
+    root.addEventListener("keydown", onPanelKeydown);
     state.refs.importInput.addEventListener("change", onImportPicked);
+    state.refs.folderButton.addEventListener("click", () =>
+      toggleFolderPopover()
+    );
+    state.refs.folderTree.addEventListener("click", onFolderTreeClick);
+    document.addEventListener("pointerdown", onDocumentPointerDown);
   }
 
   function onPanelClick(event) {
@@ -237,6 +257,18 @@
       case "delete":
         deleteItem(article);
         break;
+      case "bookmark-add-toggle":
+        toggleBookmarkAdd();
+        break;
+      case "bookmark-add":
+        addBookmark();
+        break;
+      case "bookmark-delete":
+        deleteBookmark(actionEl.closest(".zql-bookmark-item"));
+        break;
+      case "bookmark-open":
+        openBookmark(actionEl.closest(".zql-bookmark-item"));
+        break;
     }
   }
 
@@ -257,14 +289,18 @@
       return;
     }
 
-    if (event.target.classList.contains("zql-bookmark-folder")) {
-      refreshBookmarkPreview();
+    if (event.target.classList.contains("zql-ctrl-background")) {
       markDirty();
       return;
     }
 
-    if (event.target.classList.contains("zql-ctrl-background")) {
-      markDirty();
+    const bookmarkRow = event.target.closest?.(".zql-bookmark-item");
+    if (
+      bookmarkRow &&
+      (event.target.classList.contains("zql-bookmark-name") ||
+        event.target.classList.contains("zql-bookmark-url"))
+    ) {
+      updateBookmarkRow(bookmarkRow);
       return;
     }
 
@@ -272,6 +308,29 @@
     if (article) {
       updateModelFromArticle(article);
       markDirty();
+    }
+  }
+
+  function onPanelKeydown(event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    if (
+      event.target.classList.contains("zql-bookmark-name") ||
+      event.target.classList.contains("zql-bookmark-url")
+    ) {
+      event.preventDefault();
+      updateBookmarkRow(event.target.closest(".zql-bookmark-item"));
+      return;
+    }
+
+    if (
+      event.target.classList.contains("zql-bookmark-new-name") ||
+      event.target.classList.contains("zql-bookmark-new-url")
+    ) {
+      event.preventDefault();
+      addBookmark();
     }
   }
 
@@ -422,6 +481,9 @@
     state.refs.folderField.hidden = !bookmarksMode;
     state.refs.bookmarkInfo.hidden = !bookmarksMode;
     state.refs.addButton.hidden = bookmarksMode;
+    if (!bookmarksMode) {
+      closeFolderPopover();
+    }
 
     if (bookmarksMode) {
       state.refs.items.hidden = true;
@@ -434,30 +496,49 @@
 
   async function listBookmarkFolders() {
     const PlacesUtils = await getPlacesUtils();
-    const folders = [];
     const seen = new Set();
 
-    const walk = async (guid, parents) => {
-      if (!guid || seen.has(guid)) {
-        return;
+    const buildNode = async (guid, title, parents, parent = null) => {
+      const safeTitle = String(title || "未命名文件夹");
+      const node = {
+        guid,
+        title: safeTitle,
+        path: [...parents, safeTitle].join(" / "),
+        parent,
+        children: [],
+      };
+
+      if (seen.has(guid)) {
+        return node;
       }
       seen.add(guid);
 
-      // fetch() returns only the first result; onResult visits every child.
       const children = [];
-      await PlacesUtils.bookmarks.fetch(
-        { parentGuid: guid },
-        (node) => children.push(node)
-      );
+      try {
+        await PlacesUtils.bookmarks.fetch(
+          { parentGuid: guid },
+          (child) => children.push(child)
+        );
+      } catch (error) {
+        warn(`Could not list subfolders of ${safeTitle}.`, error);
+        return node;
+      }
+
       for (const child of children) {
         if (child.type !== PlacesUtils.bookmarks.TYPE_FOLDER) {
           continue;
         }
-        const title = String(child.title || "未命名文件夹");
-        const path = [...parents, title];
-        folders.push({ guid: child.guid, path: path.join(" / ") });
-        await walk(child.guid, path);
+        node.children.push(
+          await buildNode(
+            child.guid,
+            child.title,
+            [...parents, safeTitle],
+            node
+          )
+        );
       }
+
+      return node;
     };
 
     const roots = [
@@ -467,49 +548,574 @@
       [PlacesUtils.bookmarks.mobileGuid, "移动设备书签"],
     ];
 
+    const tree = [];
     for (const [guid, title] of roots) {
-      folders.push({ guid, path: title });
       try {
-        await walk(guid, [title]);
+        tree.push(await buildNode(guid, title, []));
       } catch (error) {
-        warn(`Could not list subfolders of ${title}.`, error);
+        warn(`Could not list folder ${title}.`, error);
+        tree.push({
+          guid,
+          title,
+          path: title,
+          parent: null,
+          children: [],
+        });
       }
     }
 
-    return folders;
+    return tree;
   }
 
-  async function populateFolderOptions() {
-    const select = state.refs.bookmarkFolder;
+  function indexFolderNodes(nodes) {
+    state.folderNodes = new Map();
+    const visit = (node, parent) => {
+      node.parent = parent;
+      state.folderNodes.set(node.guid, node);
+      for (const child of node.children) {
+        visit(child, node);
+      }
+    };
+    for (const node of nodes) {
+      visit(node, null);
+    }
+  }
+
+  function setSelectedFolder(guid, { dirty = false, close = false } = {}) {
+    state.refs.bookmarkFolder.value = guid || "";
+    updateFolderSelectionUI();
+    if (close) {
+      closeFolderPopover();
+      state.refs.folderButton.focus({ preventScroll: true });
+    }
+    if (dirty) {
+      markDirty();
+      refreshBookmarkPreview();
+    }
+  }
+
+  function updateFolderSelectionUI() {
+    const guid = state.refs.bookmarkFolder.value;
+    const node = state.folderNodes.get(guid);
+    state.refs.folderCurrent.textContent = node?.path || "选择文件夹…";
+    state.refs.folderButton.title = node?.path || "";
+
+    for (const row of state.refs.folderTree.querySelectorAll(
+      ".zql-tree-row"
+    )) {
+      const selected = row.dataset.guid === guid;
+      row.classList.toggle("zql-selected", selected);
+      row.setAttribute("aria-selected", String(selected));
+    }
+  }
+
+  function renderFolderTree() {
+    const tree = state.refs.folderTree;
+    tree.replaceChildren();
+
+    if (!state.folderRoots.length) {
+      const empty = document.createElement("p");
+      empty.className = "zql-tree-empty";
+      empty.textContent = "没有可用的书签文件夹。";
+      tree.appendChild(empty);
+      return;
+    }
+
+    const buildList = (nodes, level) => {
+      const list = document.createElement("ul");
+      list.className = "zql-tree-list";
+      list.setAttribute("role", "group");
+
+      for (const node of nodes) {
+        const item = document.createElement("li");
+        item.className = "zql-tree-node";
+        item.setAttribute("role", "none");
+
+        const hasChildren = node.children.length > 0;
+        const expanded = state.expandedFolders.has(node.guid);
+
+        const row = document.createElement("div");
+        row.className = "zql-tree-row";
+        row.dataset.guid = node.guid;
+        row.setAttribute("role", "treeitem");
+        row.setAttribute("aria-level", String(level + 1));
+        if (hasChildren) {
+          row.setAttribute("aria-expanded", String(expanded));
+        }
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "zql-tree-toggle";
+        toggle.dataset.action = "toggle";
+        toggle.dataset.guid = node.guid;
+        if (hasChildren) {
+          toggle.textContent = expanded ? "▾" : "▸";
+          toggle.setAttribute("aria-label", expanded ? "收起" : "展开");
+        } else {
+          toggle.tabIndex = -1;
+          toggle.setAttribute("aria-hidden", "true");
+          toggle.classList.add("zql-tree-toggle-empty");
+        }
+        row.appendChild(toggle);
+
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "zql-tree-label";
+        label.dataset.action = "select";
+        label.dataset.guid = node.guid;
+        label.textContent = node.title;
+        label.title = node.path;
+        row.appendChild(label);
+
+        item.appendChild(row);
+
+        if (hasChildren) {
+          const children = buildList(node.children, level + 1);
+          children.hidden = !expanded;
+          item.appendChild(children);
+        }
+
+        list.appendChild(item);
+      }
+
+      return list;
+    };
+
+    tree.appendChild(buildList(state.folderRoots, 0));
+    updateFolderSelectionUI();
+  }
+
+  function toggleFolderPopover(force) {
+    const popover = state.refs.folderPopover;
+    const open = typeof force === "boolean" ? force : popover.hidden;
+    popover.hidden = !open;
+    state.refs.folderButton.setAttribute("aria-expanded", String(open));
+
+    if (open) {
+      const selected = state.refs.folderTree.querySelector(
+        ".zql-tree-row.zql-selected"
+      );
+      requestAnimationFrame(() => {
+        selected?.scrollIntoView({ block: "nearest" });
+      });
+    }
+  }
+
+  function closeFolderPopover() {
+    if (!state.refs.folderPopover.hidden) {
+      toggleFolderPopover(false);
+    }
+  }
+
+  function onDocumentPointerDown(event) {
+    if (
+      state.refs.folderPopover.hidden ||
+      state.refs.folderField.contains(event.target)
+    ) {
+      return;
+    }
+    closeFolderPopover();
+  }
+
+  function onFolderTreeClick(event) {
+    const action = event.target.closest?.("[data-action]");
+    if (!action) {
+      return;
+    }
+
+    const guid = action.dataset.guid;
+    if (!guid) {
+      return;
+    }
+
+    if (action.dataset.action === "select") {
+      setSelectedFolder(guid, { dirty: true, close: true });
+      return;
+    }
+
+    if (action.dataset.action !== "toggle") {
+      return;
+    }
+
+    const wasExpanded = state.expandedFolders.has(guid);
+    if (wasExpanded) {
+      state.expandedFolders.delete(guid);
+    } else {
+      state.expandedFolders.add(guid);
+    }
+
+    const item = action.closest(".zql-tree-node");
+    const group = item?.querySelector(":scope > .zql-tree-list");
+    if (group) {
+      group.hidden = wasExpanded;
+    }
+    action.textContent = wasExpanded ? "▸" : "▾";
+    action.setAttribute("aria-label", wasExpanded ? "展开" : "收起");
+    action
+      .closest(".zql-tree-row")
+      ?.setAttribute("aria-expanded", String(!wasExpanded));
+  }
+
+  async function populateFolderPicker() {
     const saved = Services.prefs.getStringPref(
       PREF_BOOKMARK_FOLDER,
       DEFAULT_BOOKMARK_FOLDER
     );
+    const button = state.refs.folderButton;
 
-    select.disabled = true;
-    select.replaceChildren();
+    button.disabled = true;
+    state.refs.folderTree.replaceChildren();
+    state.refs.bookmarkError.hidden = true;
 
     try {
-      const folders = await listBookmarkFolders();
-      for (const folder of folders) {
-        select.add(new Option(folder.path, folder.guid));
+      state.folderRoots = await listBookmarkFolders();
+      indexFolderNodes(state.folderRoots);
+
+      let selected = saved;
+      let warning = "";
+      if (!selected || !state.folderNodes.has(selected)) {
+        if (saved) {
+          warning =
+            "之前选择的书签文件夹已不存在，请重新选择。";
+        }
+        selected = state.folderRoots[0]?.guid || "";
       }
 
-      if (saved && !folders.some((folder) => folder.guid === saved)) {
-        select.add(new Option("（已选文件夹不可用）", saved));
+      state.expandedFolders.clear();
+      let node = state.folderNodes.get(selected);
+      while (node) {
+        state.expandedFolders.add(node.guid);
+        node = node.parent;
+      }
+      if (selected) {
+        state.expandedFolders.add(selected);
       }
 
-      select.value = saved || folders[0]?.guid || "";
-      state.refs.bookmarkError.hidden = true;
+      state.refs.bookmarkFolder.value = selected;
+      renderFolderTree();
+
+      if (warning) {
+        state.refs.bookmarkError.textContent = warning;
+        state.refs.bookmarkError.hidden = false;
+      }
     } catch (error) {
-      console.error("[Zen Quick Launch] Could not list bookmark folders:", error);
-      select.add(new Option("无法读取书签文件夹", ""));
-      select.value = "";
+      console.error(
+        "[Zen Quick Launch] Could not list bookmark folders:",
+        error
+      );
+      state.folderRoots = [];
+      state.folderNodes = new Map();
+      state.refs.bookmarkFolder.value = "";
+      renderFolderTree();
       state.refs.bookmarkError.textContent =
         "无法读取书签文件夹；请确认设置页是通过 chrome:// 地址打开的。";
       state.refs.bookmarkError.hidden = false;
     } finally {
-      select.disabled = false;
+      button.disabled = state.folderRoots.length === 0;
+    }
+  }
+
+  function bookmarkUrl(node) {
+    return node.url?.href || String(node.url || "");
+  }
+
+  function createBookmarkAction(label, action, extraClass = "") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `zql-button ${extraClass}`.trim();
+    button.dataset.action = action;
+    button.textContent = label;
+    return button;
+  }
+
+  function createBookmarkRow(bookmark) {
+    const row = document.createElement("div");
+    row.className = "zql-bookmark-item";
+    row.dataset.guid = bookmark.guid;
+    row.draggable = false;
+
+    const drag = document.createElement("div");
+    drag.className = "zql-bookmark-drag";
+    drag.textContent = "⋮⋮";
+    drag.title = "拖动排序";
+    drag.setAttribute("aria-hidden", "true");
+    row.appendChild(drag);
+
+    const icon = document.createElement("img");
+    icon.className = "zql-bookmark-icon";
+    icon.alt = "";
+    icon.draggable = false;
+    loadIcon(icon, iconFor({ url: bookmarkUrl(bookmark), icon: "auto" }));
+    row.appendChild(icon);
+
+    const name = document.createElement("input");
+    name.className = "zql-bookmark-name";
+    name.type = "text";
+    name.value = bookmark.title || "";
+    name.placeholder = "书签名称";
+    name.setAttribute("aria-label", "书签名称");
+    row.appendChild(name);
+
+    const url = document.createElement("input");
+    url.className = "zql-bookmark-url";
+    url.type = "text";
+    url.value = bookmarkUrl(bookmark);
+    url.placeholder = "https://example.com";
+    url.spellcheck = false;
+    url.setAttribute("aria-label", "书签网址");
+    row.appendChild(url);
+
+    const actions = document.createElement("div");
+    actions.className = "zql-bookmark-actions";
+    actions.append(
+      createBookmarkAction("打开", "bookmark-open"),
+      createBookmarkAction("删除", "bookmark-delete", "zql-danger")
+    );
+    row.appendChild(actions);
+
+    drag.addEventListener("mousedown", () => {
+      row.draggable = true;
+    });
+
+    row.addEventListener("mouseup", () => {
+      if (!state.bookmarkDragGuid) {
+        row.draggable = false;
+      }
+    });
+
+    row.addEventListener("dragstart", (event) => {
+      if (!row.draggable) {
+        event.preventDefault();
+        return;
+      }
+      state.bookmarkDragGuid = bookmark.guid;
+      state.bookmarkDrop = null;
+      row.classList.add("zql-bookmark-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", bookmark.guid);
+    });
+
+    row.addEventListener("dragend", () => {
+      resetBookmarkDrag();
+    });
+
+    row.addEventListener("dragover", (event) => {
+      if (
+        !state.bookmarkDragGuid ||
+        state.bookmarkDragGuid === bookmark.guid
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const rect = row.getBoundingClientRect();
+      const after = event.clientY >= rect.top + rect.height / 2;
+      row.classList.toggle("zql-bookmark-drop-before", !after);
+      row.classList.toggle("zql-bookmark-drop-after", after);
+      state.bookmarkDrop = { guid: bookmark.guid, after };
+    });
+
+    row.addEventListener("dragleave", () => {
+      row.classList.remove(
+        "zql-bookmark-drop-before",
+        "zql-bookmark-drop-after"
+      );
+    });
+
+    row.addEventListener("drop", (event) => {
+      if (!state.bookmarkDragGuid) {
+        return;
+      }
+      event.preventDefault();
+      const target =
+        state.bookmarkDrop?.guid === bookmark.guid
+          ? state.bookmarkDrop
+          : { guid: bookmark.guid, after: true };
+      const sourceGuid = state.bookmarkDragGuid;
+      resetBookmarkDrag();
+      reorderBookmark(sourceGuid, target.guid, target.after);
+    });
+
+    return row;
+  }
+
+  function resetBookmarkDrag() {
+    state.bookmarkDragGuid = null;
+    state.bookmarkDrop = null;
+    for (const row of state.refs.bookmarkEditor?.children || []) {
+      row.classList.remove(
+        "zql-bookmark-dragging",
+        "zql-bookmark-drop-before",
+        "zql-bookmark-drop-after"
+      );
+      row.draggable = false;
+    }
+  }
+
+  async function updateBookmarkRow(row) {
+    if (!row) {
+      return;
+    }
+
+    const guid = row.dataset.guid;
+    const nameInput = row.querySelector(".zql-bookmark-name");
+    const urlInput = row.querySelector(".zql-bookmark-url");
+    if (!guid || !nameInput || !urlInput) {
+      return;
+    }
+
+    const title = nameInput.value.trim();
+    const target = normalizeUrl(urlInput.value);
+    if (!isValidUrl(target)) {
+      urlInput.classList.add("zql-invalid");
+      setStatus("书签网址无效，未保存。", "error");
+      return;
+    }
+    urlInput.classList.remove("zql-invalid");
+
+    try {
+      const PlacesUtils = await getPlacesUtils();
+      await PlacesUtils.bookmarks.update({
+        guid,
+        title,
+        url: target,
+      });
+      urlInput.value = target;
+      loadIcon(
+        row.querySelector(".zql-bookmark-icon"),
+        iconFor({ url: target, icon: "auto" })
+      );
+      const node = state.bookmarkChildren.find(
+        (entry) => entry.guid === guid
+      );
+      if (node) {
+        node.title = title;
+        node.url = new URL(target);
+      }
+      setStatus("书签已更新。", "ok");
+    } catch (error) {
+      console.error("[Zen Quick Launch] Could not update bookmark:", error);
+      setStatus("书签更新失败，请重试。", "error");
+    }
+  }
+
+  function openBookmark(row) {
+    if (!row) {
+      return;
+    }
+    const urlInput = row.querySelector(".zql-bookmark-url");
+    const target = normalizeUrl(urlInput?.value || "");
+    if (!isValidUrl(target)) {
+      urlInput?.classList.add("zql-invalid");
+      setStatus("书签网址无效，无法打开。", "error");
+      return;
+    }
+    urlInput?.classList.remove("zql-invalid");
+    openInTab(target);
+  }
+
+  async function deleteBookmark(row) {
+    if (!row) {
+      return;
+    }
+    const guid = row.dataset.guid;
+    const name =
+      row.querySelector(".zql-bookmark-name")?.value.trim() ||
+      row.querySelector(".zql-bookmark-url")?.value.trim() ||
+      "这个书签";
+    const confirmed = Services.prompt.confirm(
+      window,
+      "删除书签",
+      `确定删除“${name}”？此操作会同时修改书签管理器。`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const PlacesUtils = await getPlacesUtils();
+      await PlacesUtils.bookmarks.remove(guid);
+      await refreshBookmarkPreview();
+      setStatus("书签已删除。", "ok");
+    } catch (error) {
+      console.error("[Zen Quick Launch] Could not delete bookmark:", error);
+      setStatus("书签删除失败，请重试。", "error");
+    }
+  }
+
+  function toggleBookmarkAdd(force) {
+    const add = state.refs.bookmarkAdd;
+    const open =
+      typeof force === "boolean" ? force : add.hidden;
+    add.hidden = !open;
+    if (open) {
+      state.refs.bookmarkNewName.focus();
+    }
+  }
+
+  async function addBookmark() {
+    const folder = state.refs.bookmarkFolder.value;
+    if (!folder) {
+      setStatus("请先选择一个书签文件夹。", "error");
+      return;
+    }
+
+    const name = state.refs.bookmarkNewName.value.trim();
+    const urlInput = state.refs.bookmarkNewUrl;
+    const target = normalizeUrl(urlInput.value);
+    if (!isValidUrl(target)) {
+      urlInput.classList.add("zql-invalid");
+      setStatus("书签网址无效，未添加。", "error");
+      return;
+    }
+    urlInput.classList.remove("zql-invalid");
+
+    try {
+      const PlacesUtils = await getPlacesUtils();
+      await PlacesUtils.bookmarks.insert({
+        parentGuid: folder,
+        type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+        title: name || target,
+        url: target,
+      });
+      state.refs.bookmarkNewName.value = "";
+      urlInput.value = "";
+      await refreshBookmarkPreview();
+      setStatus("书签已添加。", "ok");
+      state.refs.bookmarkNewName.focus();
+    } catch (error) {
+      console.error("[Zen Quick Launch] Could not add bookmark:", error);
+      setStatus("书签添加失败，请重试。", "error");
+    }
+  }
+
+  async function reorderBookmark(sourceGuid, targetGuid, after) {
+    const children = [...state.bookmarkChildren];
+    const from = children.findIndex((node) => node.guid === sourceGuid);
+    if (from < 0) {
+      return;
+    }
+
+    const [moved] = children.splice(from, 1);
+    let to = children.findIndex((node) => node.guid === targetGuid);
+    if (to < 0) {
+      return;
+    }
+    if (after) {
+      to += 1;
+    }
+    children.splice(to, 0, moved);
+
+    try {
+      const PlacesUtils = await getPlacesUtils();
+      await PlacesUtils.bookmarks.reorder(
+        state.refs.bookmarkFolder.value,
+        children.map((node) => node.guid)
+      );
+      await refreshBookmarkPreview();
+      setStatus("书签顺序已更新。", "ok");
+    } catch (error) {
+      console.error("[Zen Quick Launch] Could not reorder bookmarks:", error);
+      setStatus("书签排序失败，请重试。", "error");
     }
   }
 
@@ -519,12 +1125,13 @@
     }
 
     const requestId = ++state.bookmarkRefreshId;
-    const list = state.refs.bookmarkList;
+    const editor = state.refs.bookmarkEditor;
     const empty = state.refs.bookmarkEmpty;
     const error = state.refs.bookmarkError;
-    list.replaceChildren();
+    editor.replaceChildren();
     empty.hidden = true;
     error.hidden = true;
+    state.bookmarkChildren = [];
 
     if (!isBookmarksMode()) {
       return;
@@ -547,18 +1154,14 @@
         return;
       }
 
+      state.bookmarkChildren = children;
       const bookmarks = children.filter(
         (node) =>
           node.type === PlacesUtils.bookmarks.TYPE_BOOKMARK && node.url
       );
 
       for (const bookmark of bookmarks) {
-        const li = document.createElement("li");
-        li.textContent =
-          bookmark.title ||
-          bookmark.url?.href ||
-          String(bookmark.url || "");
-        list.appendChild(li);
+        editor.appendChild(createBookmarkRow(bookmark));
       }
 
       empty.hidden = bookmarks.length !== 0;
@@ -602,23 +1205,6 @@
 
     const mode = Services.prefs.getStringPref(PREF_MODE, "custom");
     state.refs.mode.value = mode === "bookmarks" ? "bookmarks" : "custom";
-
-    const folder = Services.prefs.getStringPref(
-      PREF_BOOKMARK_FOLDER,
-      DEFAULT_BOOKMARK_FOLDER
-    );
-    if (
-      folder &&
-      !Array.from(state.refs.bookmarkFolder.options).some(
-        (option) => option.value === folder
-      )
-    ) {
-      state.refs.bookmarkFolder.add(
-        new Option("（已选文件夹不可用）", folder)
-      );
-    }
-    state.refs.bookmarkFolder.value =
-      folder || state.refs.bookmarkFolder.value;
 
     state.dirty = false;
     render();
@@ -847,22 +1433,15 @@
       state.refs.mode.value =
         payload.mode === "bookmarks" ? "bookmarks" : "custom";
 
-      if (
-        payload.mode === "bookmarks" &&
-        typeof payload.bookmarkFolder === "string" &&
-        payload.bookmarkFolder
-      ) {
-        const select = state.refs.bookmarkFolder;
+      if (payload.mode === "bookmarks") {
         if (
-          !Array.from(select.options).some(
-            (option) => option.value === payload.bookmarkFolder
-          )
+          typeof payload.bookmarkFolder === "string" &&
+          state.folderNodes.has(payload.bookmarkFolder)
         ) {
-          select.add(
-            new Option("（已导入文件夹）", payload.bookmarkFolder)
-          );
+          setSelectedFolder(payload.bookmarkFolder, { close: true });
+        } else {
+          setSelectedFolder("", { close: true });
         }
-        select.value = payload.bookmarkFolder;
       }
 
       render();
@@ -888,13 +1467,12 @@
     state.model = cloneDefaults();
     state.refs.mode.value = "custom";
     state.refs.ctrlBackground.checked = true;
-    if (
-      Array.from(state.refs.bookmarkFolder.options).some(
-        (option) => option.value === DEFAULT_BOOKMARK_FOLDER
-      )
-    ) {
-      state.refs.bookmarkFolder.value = DEFAULT_BOOKMARK_FOLDER;
-    }
+    setSelectedFolder(
+      state.folderNodes.has(DEFAULT_BOOKMARK_FOLDER)
+        ? DEFAULT_BOOKMARK_FOLDER
+        : state.folderRoots[0]?.guid || "",
+      { close: true }
+    );
     render();
     refreshBookmarkPreview();
     setStatus("已恢复默认预览。点击“保存并应用”后生效。");
@@ -907,6 +1485,15 @@
     }
 
     state.keyListener = (event) => {
+      if (event.key === "Escape") {
+        if (!state.refs.folderPopover.hidden) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeFolderPopover();
+        }
+        return;
+      }
+
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "s"
@@ -949,7 +1536,7 @@
       return;
     }
 
-    await populateFolderOptions();
+    await populateFolderPicker();
     loadPrefs();
     setStatus("设置已加载。Ctrl/Cmd + S 可保存。", "ok");
     attachKeyListener();

@@ -137,9 +137,170 @@ body {
   font-weight: 600;
 }
 
-#zen-quick-launch-settings .zql-folder-field select {
-  width: 280px;
+#zen-quick-launch-settings .zql-folder-picker {
+  position: relative;
+  width: 300px;
   max-width: 100%;
+}
+
+#zen-quick-launch-settings .zql-folder-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--zql-panel-border);
+  border-radius: 9px;
+  background: var(--zql-input-bg);
+  color: var(--zql-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#zen-quick-launch-settings .zql-folder-button:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--zql-accent) 35%,
+    var(--zql-panel-border)
+  );
+}
+
+#zen-quick-launch-settings .zql-folder-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#zen-quick-launch-settings .zql-folder-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#zen-quick-launch-settings .zql-folder-arrow {
+  flex: 0 0 auto;
+  color: var(--zql-muted);
+  transition: transform 120ms ease;
+}
+
+#zen-quick-launch-settings
+  .zql-folder-button[aria-expanded="true"]
+  .zql-folder-arrow {
+  transform: rotate(180deg);
+}
+
+#zen-quick-launch-settings .zql-folder-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(360px, calc(100vw - 72px));
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--zql-panel-border);
+  border-radius: 12px;
+  background: var(--zql-surface);
+  box-shadow: 0 14px 40px
+    light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.5));
+}
+
+#zen-quick-launch-settings .zql-folder-popover[hidden] {
+  display: none;
+}
+
+#zen-quick-launch-settings .zql-tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#zen-quick-launch-settings .zql-tree-list .zql-tree-list {
+  padding-inline-start: 16px;
+}
+
+#zen-quick-launch-settings .zql-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 7px;
+}
+
+#zen-quick-launch-settings .zql-tree-row:hover {
+  background: var(--zql-surface-soft);
+}
+
+#zen-quick-launch-settings .zql-tree-row.zql-selected {
+  background: color-mix(
+    in srgb,
+    var(--zql-accent) 14%,
+    transparent
+  );
+}
+
+#zen-quick-launch-settings .zql-tree-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--zql-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#zen-quick-launch-settings .zql-tree-toggle:hover {
+  background: var(--zql-surface-soft);
+  color: var(--zql-text);
+}
+
+#zen-quick-launch-settings .zql-tree-toggle-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#zen-quick-launch-settings .zql-tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--zql-text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+#zen-quick-launch-settings .zql-tree-row.zql-selected .zql-tree-label {
+  color: var(--zql-accent);
+  font-weight: 600;
+}
+
+#zen-quick-launch-settings .zql-tree-toggle:focus-visible,
+#zen-quick-launch-settings .zql-tree-label:focus-visible,
+#zen-quick-launch-settings .zql-folder-button:focus-visible {
+  outline: 2px solid var(--zql-accent);
+  outline-offset: -1px;
+}
+
+#zen-quick-launch-settings .zql-tree-empty {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--zql-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 #zen-quick-launch-settings .zql-add-button[hidden] {
@@ -169,16 +330,110 @@ body {
   margin-bottom: 0;
 }
 
-#zen-quick-launch-settings .zql-bookmark-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding-inline-start: 22px;
-  color: var(--zql-text);
+#zen-quick-launch-settings .zql-bookmark-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
 }
 
-#zen-quick-launch-settings .zql-bookmark-list:empty {
-  display: none;
+#zen-quick-launch-settings .zql-bookmark-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+#zen-quick-launch-settings .zql-bookmark-head strong {
+  color: var(--zql-text);
+  font-size: 13.5px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-head small {
+  color: var(--zql-muted);
+  line-height: 1.5;
+}
+
+#zen-quick-launch-settings .zql-bookmark-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-add[hidden] {
+  display: none !important;
+}
+
+#zen-quick-launch-settings .zql-bookmark-add input:first-child {
+  flex: 0 1 200px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-add input:nth-child(2) {
+  flex: 1 1 300px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-editor {
+  display: grid;
+  gap: 8px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-item {
+  display: grid;
+  grid-template-columns:
+    22px 22px minmax(110px, 0.8fr) minmax(220px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--zql-panel-border);
+  border-radius: 10px;
+  background: var(--zql-surface-soft);
+}
+
+#zen-quick-launch-settings .zql-bookmark-drag {
+  color: var(--zql-muted);
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+  font-size: 16px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-name,
+#zen-quick-launch-settings .zql-bookmark-url {
+  min-width: 0;
+  min-height: 32px !important;
+  box-sizing: border-box;
+}
+
+#zen-quick-launch-settings .zql-bookmark-actions {
+  display: flex;
+  gap: 6px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-actions .zql-button {
+  min-height: 30px;
+  padding-inline: 9px;
+}
+
+#zen-quick-launch-settings .zql-bookmark-item.zql-bookmark-dragging {
+  opacity: 0.45;
+}
+
+#zen-quick-launch-settings
+  .zql-bookmark-item.zql-bookmark-drop-before {
+  box-shadow: inset 0 2px 0 var(--zql-accent);
+}
+
+#zen-quick-launch-settings
+  .zql-bookmark-item.zql-bookmark-drop-after {
+  box-shadow: inset 0 -2px 0 var(--zql-accent);
 }
 
 #zen-quick-launch-settings .zql-bookmark-empty[hidden],
@@ -492,5 +747,23 @@ body {
 
   #zen-quick-launch-settings .zql-footer {
     flex-wrap: wrap;
+  }
+
+  #zen-quick-launch-settings .zql-bookmark-head {
+    flex-direction: column;
+  }
+
+  #zen-quick-launch-settings .zql-bookmark-item {
+    grid-template-columns: 22px 22px minmax(0, 1fr);
+  }
+
+  #zen-quick-launch-settings .zql-bookmark-name,
+  #zen-quick-launch-settings .zql-bookmark-url,
+  #zen-quick-launch-settings .zql-bookmark-actions {
+    grid-column: 3;
+  }
+
+  #zen-quick-launch-settings .zql-bookmark-actions {
+    justify-self: end;
   }
 }
