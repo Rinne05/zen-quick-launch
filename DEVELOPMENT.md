@@ -298,6 +298,14 @@ const divider = document.getElementById("zen-quick-launch-divider");
 期望：标题为 `Zen Quick Launch 设置`，`rows` 与入口数量一致，`mode` 为
 `custom` 或 `bookmarks`。
 
+右键菜单检查：
+
+- 自定义模式：打开、后台打开、新窗口、复制链接、编辑、删除和设置入口都
+  可用；删除后侧栏数量立即减少。
+- 书签模式：菜单项与 Zen 书签侧栏一致；编辑/删除书签、剪切/复制/粘贴、
+  新建书签/文件夹/分隔条和末尾的 Quick Launch 设置可用。编辑书签会打开
+  原生书签对话框，不会跳到 Quick Launch 设置页。
+
 ### 重置测试状态
 
 `about:config` → 搜索 `zen.quicklaunch.` → 重置所有项。侧栏会通过 pref 观察器
@@ -345,6 +353,10 @@ Marionette 客户端；日常仍以 Browser Toolbox 手工检查为准。
     `JS/zen-quick-launch.uc.js` 中的 `SETTINGS_URL`、README 和设置页链接。
 12. **不要编辑生成的 `sine-mods/chrome.css`。** 它每次刷新都会重写；要改样式
     请改仓库根目录的 `chrome.css`。
+13. **书签右键菜单依赖 Zen 原生菜单模板。** 它从
+    `#sidebar-bookmarks-context-menu` 克隆结构和文案，并调用 Places API；
+    Zen 更新后先检查菜单项 ID、`PlacesUIUtils` 和 `PlacesTransactions` 接口
+    是否仍然存在。
 
 ## 发布检查清单
 

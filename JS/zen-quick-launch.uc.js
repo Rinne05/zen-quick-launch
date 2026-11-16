@@ -16,6 +16,8 @@
     "chrome://zen-quick-launch/content/settings.html";
   const OPEN_URL_TOPIC = "zen-quick-launch:open-url";
   const CONTEXT_MENU_ID = "zen-quick-launch-context-menu";
+  const BOOKMARK_CONTEXT_MENU_ID =
+    "zen-quick-launch-bookmark-context-menu";
   const DRAG_INDICATOR_ID = "zen-quick-launch-drag-indicator";
   const DIVIDER_ID = "zen-quick-launch-divider";
   const DRAG_MIME = "application/x-zen-quick-launch-item";
@@ -59,6 +61,8 @@
   window[INSTANCE_KEY] = state;
 
   let placesUtilsPromise = null;
+  let placesUIUtilsPromise = null;
+  let placesTransactionsPromise = null;
 
   function getPlacesUtils() {
     if (!placesUtilsPromise) {
@@ -70,6 +74,40 @@
       });
     }
     return placesUtilsPromise;
+  }
+
+  function getPlacesUtilsSync() {
+    return ChromeUtils.importESModule(
+      "resource://gre/modules/PlacesUtils.sys.mjs"
+    ).PlacesUtils;
+  }
+
+  function getPlacesUIUtils() {
+    if (!placesUIUtilsPromise) {
+      placesUIUtilsPromise = Promise.resolve(
+        ChromeUtils.importESModule(
+          "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs"
+        ).PlacesUIUtils
+      );
+    }
+    return placesUIUtilsPromise;
+  }
+
+  function getPlacesTransactions() {
+    if (!placesTransactionsPromise) {
+      placesTransactionsPromise = Promise.resolve(
+        ChromeUtils.importESModule(
+          "resource://gre/modules/PlacesTransactions.sys.mjs"
+        ).PlacesTransactions
+      );
+    }
+    return placesTransactionsPromise;
+  }
+
+  function getPrivateBrowsingUtils() {
+    return ChromeUtils.importESModule(
+      "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
+    ).PrivateBrowsingUtils;
   }
 
   const log = (...args) => console.log("[Zen Quick Launch]", ...args);
@@ -324,6 +362,30 @@
     return openUrlInNewTab(item.url, inBackground);
   }
 
+  function openInWindow(item, isPrivate = false) {
+    try {
+      window.openTrustedLinkIn(item.url, "window", {
+        private: isPrivate,
+        triggeringPrincipal:
+          Services.scriptSecurityManager.getSystemPrincipal(),
+      });
+    } catch (error) {
+      warn("Could not open a new window.", error);
+    }
+  }
+
+  function openInContainer(item, userContextId) {
+    try {
+      window.openTrustedLinkIn(item.url, "tab", {
+        userContextId,
+        triggeringPrincipal:
+          Services.scriptSecurityManager.getSystemPrincipal(),
+      });
+    } catch (error) {
+      warn("Could not open a container tab.", error);
+    }
+  }
+
   function openSettings(hash = "") {
     const browser = getBrowser();
     if (!browser) {
@@ -393,13 +455,7 @@
         if (item) openFreshTab(item, true);
         break;
       case "open-window":
-        if (item) {
-          try {
-            window.openTrustedLinkIn(item.url, "window");
-          } catch (error) {
-            warn("Could not open a new window.", error);
-          }
-        }
+        if (item) openInWindow(item, false);
         break;
       case "copy-url":
         if (item) copyUrl(item.url);
@@ -408,6 +464,430 @@
         if (item) {
           openSettings(`entry=${encodeURIComponent(item.id)}`);
         }
+        break;
+      case "delete":
+        if (item) removeCustomItem(item);
+        break;
+    }
+  }
+
+  function removeCustomItem(item) {
+    const items = readRawItems().filter((entry) => entry.id !== item.id);
+    Services.prefs.setStringPref(PREF_ITEMS, JSON.stringify(items));
+    placeContainer();
+  }
+
+  function bookmarkMenuItem(menu, id) {
+    return menu.querySelector(`[data-native-id="${id}"]`);
+  }
+
+  function setBookmarkMenuHidden(menu, id, hidden) {
+    const node = bookmarkMenuItem(menu, id);
+    if (node) {
+      node.hidden = hidden;
+    }
+  }
+
+  function hasBookmarkClipboardData() {
+    const PlacesUtils = getPlacesUtilsSync();
+    return Services.clipboard.hasDataMatchingFlavors(
+      [
+        PlacesUtils.TYPE_X_MOZ_PLACE,
+        PlacesUtils.TYPE_X_MOZ_URL,
+        PlacesUtils.TYPE_PLAINTEXT,
+      ],
+      Ci.nsIClipboard.kGlobalClipboard
+    );
+  }
+
+  function copyBookmarkToClipboard(item, action) {
+    if (!item.bookmarkGuid) {
+      return;
+    }
+
+    const PlacesUtils = getPlacesUtilsSync();
+    const xferable = Cc["@mozilla.org/widget/transferable;1"].createInstance(
+      Ci.nsITransferable
+    );
+    xferable.init(null);
+
+    const toSupports = (value) => {
+      const string = Cc["@mozilla.org/supports-string;1"].createInstance(
+        Ci.nsISupportsString
+      );
+      string.data = value;
+      return string;
+    };
+    const addData = (type, value) => {
+      xferable.addDataFlavor(type);
+      xferable.setTransferData(type, toSupports(value));
+    };
+
+    addData(
+      PlacesUtils.TYPE_X_MOZ_PLACE,
+      JSON.stringify({
+        type: PlacesUtils.TYPE_X_MOZ_PLACE,
+        itemGuid: item.bookmarkGuid,
+        instanceId: PlacesUtils.instanceId,
+        title: item.name,
+        uri: item.url,
+      })
+    );
+    addData(
+      PlacesUtils.TYPE_X_MOZ_URL,
+      `${item.url}${PlacesUtils.endl}${item.name ?? ""}`
+    );
+    addData(PlacesUtils.TYPE_PLAINTEXT, item.url);
+    addData(
+      PlacesUtils.TYPE_X_MOZ_PLACE_ACTION,
+      `${action},${Services.appinfo.name}`
+    );
+
+    Services.clipboard.setData(
+      xferable,
+      null,
+      Ci.nsIClipboard.kGlobalClipboard
+    );
+  }
+
+  async function pasteBookmark(item) {
+    if (!item.bookmarkGuid) {
+      return;
+    }
+
+    const PlacesUtils = await getPlacesUtils();
+    const PlacesUIUtils = await getPlacesUIUtils();
+    const info = await PlacesUtils.bookmarks.fetch({
+      guid: item.bookmarkGuid,
+    });
+    if (!info) {
+      return;
+    }
+
+    const xferable = Cc["@mozilla.org/widget/transferable;1"].createInstance(
+      Ci.nsITransferable
+    );
+    xferable.init(null);
+    for (const type of [
+      PlacesUtils.TYPE_X_MOZ_PLACE,
+      PlacesUtils.TYPE_X_MOZ_URL,
+      PlacesUtils.TYPE_PLAINTEXT,
+    ]) {
+      xferable.addDataFlavor(type);
+    }
+    Services.clipboard.getData(xferable, Ci.nsIClipboard.kGlobalClipboard);
+
+    let data = {};
+    let type = {};
+    try {
+      xferable.getAnyTransferData(type, data);
+    } catch (_error) {
+      return;
+    }
+
+    let validNodes;
+    try {
+      ({ validNodes } = PlacesUtils.unwrapNodes(
+        data.value.QueryInterface(Ci.nsISupportsString).data,
+        type.value
+      ));
+    } catch (_error) {
+      return;
+    }
+
+    let doCopy = true;
+    try {
+      const actionXferable = Cc[
+        "@mozilla.org/widget/transferable;1"
+      ].createInstance(Ci.nsITransferable);
+      actionXferable.init(null);
+      actionXferable.addDataFlavor(
+        PlacesUtils.TYPE_X_MOZ_PLACE_ACTION
+      );
+      Services.clipboard.getData(
+        actionXferable,
+        Ci.nsIClipboard.kGlobalClipboard
+      );
+      const actionValue = {};
+      actionXferable.getTransferData(
+        PlacesUtils.TYPE_X_MOZ_PLACE_ACTION,
+        actionValue
+      );
+      const [clipAction] = actionValue.value
+        .QueryInterface(Ci.nsISupportsString)
+        .data.split(",");
+      doCopy = clipAction !== "cut";
+    } catch (_error) {
+      // Default to copy.
+    }
+
+    await PlacesUIUtils.handleTransferItems(
+      validNodes,
+      { guid: info.parentGuid, getIndex: () => info.index },
+      doCopy,
+      null
+    );
+  }
+
+  async function editBookmark(item) {
+    const PlacesUtils = await getPlacesUtils();
+    const PlacesUIUtils = await getPlacesUIUtils();
+    const info = await PlacesUtils.bookmarks.fetch({
+      guid: item.bookmarkGuid,
+    });
+    if (!info) {
+      return;
+    }
+    const node = await PlacesUIUtils.promiseNodeLikeFromFetchInfo(info);
+    await PlacesUIUtils.showBookmarkDialog(
+      { action: "edit", node },
+      window
+    );
+  }
+
+  async function deleteBookmark(item) {
+    const PlacesTransactions = await getPlacesTransactions();
+    await PlacesTransactions.Remove({
+      guids: [item.bookmarkGuid],
+    }).transact();
+  }
+
+  async function addBookmarkItem(item, type) {
+    const PlacesUtils = await getPlacesUtils();
+    const PlacesUIUtils = await getPlacesUIUtils();
+    const info = await PlacesUtils.bookmarks.fetch({
+      guid: item.bookmarkGuid,
+    });
+    if (!info) {
+      return;
+    }
+    await PlacesUIUtils.showBookmarkDialog(
+      {
+        action: "add",
+        type,
+        defaultInsertionPoint: {
+          guid: info.parentGuid,
+          getIndex: () => info.index,
+        },
+        hiddenRows: ["folderPicker"],
+      },
+      window
+    );
+  }
+
+  async function addBookmarkSeparator(item) {
+    const PlacesUtils = await getPlacesUtils();
+    const PlacesTransactions = await getPlacesTransactions();
+    const info = await PlacesUtils.bookmarks.fetch({
+      guid: item.bookmarkGuid,
+    });
+    if (!info) {
+      return;
+    }
+    await PlacesTransactions.NewSeparator({
+      parentGuid: info.parentGuid,
+      index: info.index,
+    }).transact();
+  }
+
+  // Bookmark entries reuse the native bookmark sidebar menu so labels and
+  // structure stay in sync with Zen. The commands are wired to Places APIs
+  // because this menu is detached from the sidebar's Places view.
+  function ensureBookmarkContextMenu() {
+    let menu = document.getElementById(BOOKMARK_CONTEXT_MENU_ID);
+    if (menu) {
+      return menu;
+    }
+
+    const template = document.getElementById(
+      "sidebar-bookmarks-context-menu"
+    );
+    if (!template) {
+      warn("Native bookmark context menu is unavailable.");
+      return null;
+    }
+
+    menu = template.cloneNode(true);
+    menu.id = BOOKMARK_CONTEXT_MENU_ID;
+
+    for (const node of menu.querySelectorAll("[id]")) {
+      node.setAttribute("data-native-id", node.id);
+      node.id = `${BOOKMARK_CONTEXT_MENU_ID}-${node.id}`;
+    }
+
+    const containerPopup = menu.querySelector(
+      '[data-native-id="sidebar-bookmarks-context-container-tab-popup"]'
+    );
+    if (containerPopup) {
+      containerPopup.addEventListener("popupshowing", () => {
+        if (!state.contextItem) {
+          return;
+        }
+        containerPopup.replaceChildren();
+        if (typeof window.createUserContextMenu === "function") {
+          window.createUserContextMenu(
+            { target: containerPopup },
+            {
+              isContextMenu: true,
+              showDefaultTab: true,
+              containerSource: "zen_quick_launch",
+            }
+          );
+        }
+      });
+      containerPopup.addEventListener("command", (event) => {
+        const userContextId =
+          event.target.getAttribute?.("data-usercontextid");
+        if (userContextId == null) {
+          return;
+        }
+        event.stopPropagation();
+        if (state.contextItem) {
+          openInContainer(state.contextItem, Number(userContextId));
+        }
+      });
+    }
+
+    const settingsSeparator = document.createXULElement("menuseparator");
+    const settings = document.createXULElement("menuitem");
+    settings.setAttribute("label", "Quick Launch 设置…");
+    settings.setAttribute("data-action", "settings");
+    menu.append(settingsSeparator, settings);
+
+    menu.addEventListener("command", onBookmarkContextMenuCommand);
+    menu.addEventListener("popuphidden", (event) => {
+      if (event.target === menu) {
+        state.contextItem = null;
+      }
+    });
+
+    const host =
+      document.getElementById("mainPopupSet") || document.documentElement;
+    host.appendChild(menu);
+    return menu;
+  }
+
+  function configureBookmarkContextMenu(menu) {
+    for (const id of [
+      "sidebar-bookmarks-context-open-all-bookmarks",
+      "sidebar-bookmarks-context-sep-open-all",
+      "sidebar-bookmarks-context-show-in-folder",
+      "sidebar-bookmarks-context-sep-sort",
+      "sidebar-bookmarks-context-sort-by-name",
+    ]) {
+      setBookmarkMenuHidden(menu, id, true);
+    }
+
+    for (const id of [
+      "sidebar-bookmarks-context-open-in-tab",
+      "sidebar-bookmarks-context-open-in-window",
+      "sidebar-bookmarks-context-sep-open-options",
+      "sidebar-bookmarks-context-edit-bookmark",
+      "sidebar-bookmarks-context-delete-bookmark",
+      "sidebar-bookmarks-context-sep-cut-copy",
+      "sidebar-bookmarks-context-cut",
+      "sidebar-bookmarks-context-copy",
+      "sidebar-bookmarks-context-sep-edit-copy",
+      "sidebar-bookmarks-context-copy-link",
+      "sidebar-bookmarks-context-sep-add",
+      "sidebar-bookmarks-context-add-bookmark",
+      "sidebar-bookmarks-context-add-folder",
+      "sidebar-bookmarks-context-add-separator",
+    ]) {
+      setBookmarkMenuHidden(menu, id, false);
+    }
+
+    const PrivateBrowsingUtils = getPrivateBrowsingUtils();
+    const isPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    const containersEnabled =
+      typeof window.createUserContextMenu === "function" &&
+      Services.prefs.getBoolPref("privacy.userContext.enabled", false);
+    const containerMenu = bookmarkMenuItem(
+      menu,
+      "sidebar-bookmarks-context-open-in-container-tab"
+    );
+    if (containerMenu) {
+      containerMenu.hidden = isPrivate || !containersEnabled;
+    }
+
+    const privateWindow = bookmarkMenuItem(
+      menu,
+      "sidebar-bookmarks-context-open-in-private-window"
+    );
+    if (privateWindow) {
+      privateWindow.hidden = !PrivateBrowsingUtils.enabled;
+    }
+
+    const paste = bookmarkMenuItem(
+      menu,
+      "sidebar-bookmarks-context-paste"
+    );
+    if (paste) {
+      paste.hidden = !hasBookmarkClipboardData();
+    }
+  }
+
+  function onBookmarkContextMenuCommand(event) {
+    const action = event.target.getAttribute?.("data-action");
+    if (action === "settings") {
+      openSettings();
+      return;
+    }
+
+    const nativeId = event.target.getAttribute?.("data-native-id");
+    const item = state.contextItem;
+    if (!nativeId || !item) {
+      return;
+    }
+
+    switch (nativeId) {
+      case "sidebar-bookmarks-context-open-in-tab":
+        openFreshTab(item, false);
+        break;
+      case "sidebar-bookmarks-context-open-in-window":
+        openInWindow(item, false);
+        break;
+      case "sidebar-bookmarks-context-open-in-private-window":
+        openInWindow(item, true);
+        break;
+      case "sidebar-bookmarks-context-edit-bookmark":
+        editBookmark(item).catch((error) =>
+          warn("Could not edit bookmark.", error)
+        );
+        break;
+      case "sidebar-bookmarks-context-delete-bookmark":
+        deleteBookmark(item).catch((error) =>
+          warn("Could not delete bookmark.", error)
+        );
+        break;
+      case "sidebar-bookmarks-context-cut":
+        copyBookmarkToClipboard(item, "cut");
+        break;
+      case "sidebar-bookmarks-context-copy":
+        copyBookmarkToClipboard(item, "copy");
+        break;
+      case "sidebar-bookmarks-context-paste":
+        pasteBookmark(item).catch((error) =>
+          warn("Could not paste bookmark.", error)
+        );
+        break;
+      case "sidebar-bookmarks-context-copy-link":
+        copyUrl(item.url);
+        break;
+      case "sidebar-bookmarks-context-add-bookmark":
+        addBookmarkItem(item, "bookmark").catch((error) =>
+          warn("Could not add bookmark.", error)
+        );
+        break;
+      case "sidebar-bookmarks-context-add-folder":
+        addBookmarkItem(item, "folder").catch((error) =>
+          warn("Could not add folder.", error)
+        );
+        break;
+      case "sidebar-bookmarks-context-add-separator":
+        addBookmarkSeparator(item).catch((error) =>
+          warn("Could not add separator.", error)
+        );
         break;
     }
   }
@@ -430,6 +910,7 @@
       null,
       ["copy-url", "复制链接"],
       ["edit", "编辑此入口…"],
+      ["delete", "删除此入口…"],
       ["settings", "Quick Launch 设置…"],
     ];
 
@@ -447,8 +928,10 @@
     }
 
     menu.addEventListener("command", onContextMenuCommand);
-    menu.addEventListener("popuphidden", () => {
-      state.contextItem = null;
+    menu.addEventListener("popuphidden", (event) => {
+      if (event.target === menu) {
+        state.contextItem = null;
+      }
     });
 
     const host =
@@ -458,17 +941,25 @@
   }
 
   function openItemContextMenu(item, event) {
-    const menu = ensureContextMenu();
+    const isBookmark = !!item.bookmarkGuid;
+    let menu = isBookmark ? ensureBookmarkContextMenu() : null;
+    if (!menu) {
+      menu = ensureContextMenu();
+    }
     state.contextItem = item;
 
-    // Bookmark-backed entries are edited in the bookmarks manager, not as a
-    // Quick Launch item. Keep the rest of the menu identical.
-    const editItem = menu.querySelector('[data-action="edit"]');
-    if (editItem) {
-      if (item.bookmarkGuid) {
-        editItem.setAttribute("hidden", "true");
-      } else {
-        editItem.removeAttribute("hidden");
+    if (isBookmark && menu.id === BOOKMARK_CONTEXT_MENU_ID) {
+      configureBookmarkContextMenu(menu);
+    } else {
+      // Custom entries keep the native-looking open options and use the
+      // Quick Launch settings page for editing.
+      const editItem = menu.querySelector('[data-action="edit"]');
+      const deleteItem = menu.querySelector('[data-action="delete"]');
+      if (editItem) {
+        editItem.hidden = isBookmark;
+      }
+      if (deleteItem) {
+        deleteItem.hidden = isBookmark;
       }
     }
 
@@ -1215,6 +1706,7 @@ ${item.url}
       document.getElementById(CONTAINER_ID)?.remove();
       document.getElementById(DIVIDER_ID)?.remove();
       document.getElementById(CONTEXT_MENU_ID)?.remove();
+      document.getElementById(BOOKMARK_CONTEXT_MENU_ID)?.remove();
       document.getElementById(DRAG_INDICATOR_ID)?.remove();
       document.documentElement.removeAttribute(
         "zen-quick-launch-loaded"
