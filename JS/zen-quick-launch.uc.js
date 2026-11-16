@@ -16,8 +16,6 @@
     "chrome://zen-quick-launch/content/settings.html";
   const OPEN_URL_TOPIC = "zen-quick-launch:open-url";
   const CONTEXT_MENU_ID = "zen-quick-launch-context-menu";
-  const BOOKMARK_CONTEXT_MENU_ID =
-    "zen-quick-launch-bookmark-context-menu";
   const DRAG_INDICATOR_ID = "zen-quick-launch-drag-indicator";
   const DIVIDER_ID = "zen-quick-launch-divider";
   const DRAG_MIME = "application/x-zen-quick-launch-item";
@@ -43,6 +41,7 @@
     container: null,
     grid: null,
     contextItem: null,
+    bookmarkMenuState: null,
     dragIndicator: null,
     dragSourceId: null,
     dropTarget: null,
@@ -478,7 +477,7 @@
   }
 
   function bookmarkMenuItem(menu, id) {
-    return menu.querySelector(`[data-native-id="${id}"]`);
+    return menu.querySelector(`#${CSS.escape(id)}`);
   }
 
   function setBookmarkMenuHidden(menu, id, hidden) {
@@ -690,61 +689,106 @@
     }).transact();
   }
 
-  // Bookmark entries reuse the native bookmark sidebar menu so labels and
-  // structure stay in sync with Zen. The commands are wired to Places APIs
-  // because this menu is detached from the sidebar's Places view.
-  function ensureBookmarkContextMenu() {
-    let menu = document.getElementById(BOOKMARK_CONTEXT_MENU_ID);
-    if (menu) {
-      return menu;
+  function getBookmarksSidebarComponent(menu) {
+    try {
+      const browser = document.getElementById("sidebar");
+      const component =
+        browser?.contentDocument?.querySelector("sidebar-bookmarks");
+      if (component?._contextMenu === menu) {
+        return component;
+      }
+    } catch (_error) {}
+    return null;
+  }
+
+  // Borrow the native sidebar menu instead of cloning it. Keeping the native
+  // IDs means theme rules that target #sidebar-bookmarks-context-menu (for
+  // example custom menu icons) apply automatically. The settings entry and
+  // command listeners are temporary and restored on popuphidden.
+  function restoreBookmarkContextMenu() {
+    const borrowed = state.bookmarkMenuState;
+    if (!borrowed) {
+      return;
+    }
+    state.bookmarkMenuState = null;
+
+    const {
+      menu,
+      saved,
+      component,
+      componentListenerRemoved,
+      settingsSeparator,
+      settings,
+      onCommand,
+      onContainerCommand,
+      onHidden,
+    } = borrowed;
+
+    try {
+      menu.removeEventListener("command", onCommand);
+      menu.querySelector(
+        "#sidebar-bookmarks-context-container-tab-popup"
+      )?.removeEventListener("command", onContainerCommand);
+      menu.removeEventListener("popuphidden", onHidden);
+      settingsSeparator.remove();
+      settings.remove();
+
+      for (const [node, value] of saved) {
+        node.hidden = value.hidden;
+        node.disabled = value.disabled;
+        if (value.label == null) {
+          node.removeAttribute("label");
+        } else {
+          node.setAttribute("label", value.label);
+        }
+        if (value.l10n == null) {
+          node.removeAttribute("data-l10n-id");
+        } else {
+          node.setAttribute("data-l10n-id", value.l10n);
+        }
+        if (value.l10nArgs == null) {
+          node.removeAttribute("data-l10n-args");
+        } else {
+          node.setAttribute("data-l10n-args", value.l10nArgs);
+        }
+      }
+
+      if (
+        componentListenerRemoved &&
+        component?.isConnected &&
+        component._contextMenu === menu
+      ) {
+        menu.addEventListener("command", component);
+      }
+    } catch (error) {
+      warn("Could not restore the native bookmark menu.", error);
     }
 
-    const template = document.getElementById(
+    state.contextItem = null;
+  }
+
+  function openBookmarkContextMenu(item, event) {
+    const menu = document.getElementById(
       "sidebar-bookmarks-context-menu"
     );
-    if (!template) {
+    if (!menu) {
       warn("Native bookmark context menu is unavailable.");
-      return null;
+      return false;
     }
 
-    menu = template.cloneNode(true);
-    menu.id = BOOKMARK_CONTEXT_MENU_ID;
+    restoreBookmarkContextMenu();
+    state.contextItem = item;
 
-    for (const node of menu.querySelectorAll("[id]")) {
-      node.setAttribute("data-native-id", node.id);
-      node.id = `${BOOKMARK_CONTEXT_MENU_ID}-${node.id}`;
-    }
-
-    const containerPopup = menu.querySelector(
-      '[data-native-id="sidebar-bookmarks-context-container-tab-popup"]'
-    );
-    if (containerPopup) {
-      containerPopup.addEventListener("popupshowing", () => {
-        if (!state.contextItem) {
-          return;
-        }
-        containerPopup.replaceChildren();
-        if (typeof window.createUserContextMenu === "function") {
-          window.createUserContextMenu(
-            { target: containerPopup },
-            {
-              isContextMenu: true,
-              showDefaultTab: true,
-              containerSource: "zen_quick_launch",
-            }
-          );
-        }
-      });
-      containerPopup.addEventListener("command", (event) => {
-        const userContextId =
-          event.target.getAttribute?.("data-usercontextid");
-        if (userContextId == null) {
-          return;
-        }
-        event.stopPropagation();
-        if (state.contextItem) {
-          openInContainer(state.contextItem, Number(userContextId));
-        }
+    const saved = new Map();
+    for (const node of menu.querySelectorAll(
+      "menuitem, menu, menuseparator"
+    )) {
+      saved.set(node, {
+        hidden: node.hidden,
+        disabled: node.disabled,
+        label: node.getAttribute("label"),
+        l10n: node.getAttribute("data-l10n-id"),
+        l10nArgs: node.getAttribute("data-l10n-args"),
       });
     }
 
@@ -754,17 +798,58 @@
     settings.setAttribute("data-action", "settings");
     menu.append(settingsSeparator, settings);
 
-    menu.addEventListener("command", onBookmarkContextMenuCommand);
-    menu.addEventListener("popuphidden", (event) => {
-      if (event.target === menu) {
-        state.contextItem = null;
-      }
-    });
+    const component = getBookmarksSidebarComponent(menu);
+    const componentListenerRemoved = !!component;
+    if (componentListenerRemoved) {
+      menu.removeEventListener("command", component);
+    }
 
-    const host =
-      document.getElementById("mainPopupSet") || document.documentElement;
-    host.appendChild(menu);
-    return menu;
+    const onCommand = (commandEvent) =>
+      onBookmarkContextMenuCommand(commandEvent);
+    const onContainerCommand = (commandEvent) => {
+      const userContextId =
+        commandEvent.target.getAttribute?.("data-usercontextid");
+      if (userContextId == null) {
+        return;
+      }
+      commandEvent.stopPropagation();
+      if (state.contextItem) {
+        openInContainer(state.contextItem, Number(userContextId));
+      }
+    };
+    const onHidden = (hiddenEvent) => {
+      if (hiddenEvent.target === menu) {
+        restoreBookmarkContextMenu();
+      }
+    };
+
+    menu.addEventListener("command", onCommand);
+    menu.querySelector(
+      "#sidebar-bookmarks-context-container-tab-popup"
+    )?.addEventListener("command", onContainerCommand);
+    menu.addEventListener("popuphidden", onHidden);
+
+    state.bookmarkMenuState = {
+      menu,
+      saved,
+      component,
+      componentListenerRemoved,
+      settingsSeparator,
+      settings,
+      onCommand,
+      onContainerCommand,
+      onHidden,
+    };
+
+    configureBookmarkContextMenu(menu);
+
+    const rect = event.currentTarget?.getBoundingClientRect?.();
+    const x = event.screenX ||
+      Math.round((window.mozInnerScreenX || 0) + (rect?.left || 0));
+    const y = event.screenY ||
+      Math.round((window.mozInnerScreenY || 0) + (rect?.bottom || 0));
+    menu.openPopupAtScreen(x, y, true);
+    return true;
   }
 
   function configureBookmarkContextMenu(menu) {
@@ -825,6 +910,29 @@
     if (paste) {
       paste.hidden = !hasBookmarkClipboardData();
     }
+
+    const edit = bookmarkMenuItem(
+      menu,
+      "sidebar-bookmarks-context-edit-bookmark"
+    );
+    if (edit) {
+      edit.setAttribute(
+        "data-l10n-id",
+        "sidebar-bookmarks-context-menu-edit-bookmark"
+      );
+    }
+
+    const remove = bookmarkMenuItem(
+      menu,
+      "sidebar-bookmarks-context-delete-bookmark"
+    );
+    if (remove) {
+      remove.setAttribute(
+        "data-l10n-id",
+        "sidebar-bookmarks-context-menu-delete-bookmark"
+      );
+      remove.removeAttribute("data-l10n-args");
+    }
   }
 
   function onBookmarkContextMenuCommand(event) {
@@ -834,7 +942,7 @@
       return;
     }
 
-    const nativeId = event.target.getAttribute?.("data-native-id");
+    const nativeId = event.target.id;
     const item = state.contextItem;
     if (!nativeId || !item) {
       return;
@@ -942,25 +1050,23 @@
 
   function openItemContextMenu(item, event) {
     const isBookmark = !!item.bookmarkGuid;
-    let menu = isBookmark ? ensureBookmarkContextMenu() : null;
-    if (!menu) {
-      menu = ensureContextMenu();
-    }
     state.contextItem = item;
 
-    if (isBookmark && menu.id === BOOKMARK_CONTEXT_MENU_ID) {
-      configureBookmarkContextMenu(menu);
-    } else {
-      // Custom entries keep the native-looking open options and use the
-      // Quick Launch settings page for editing.
-      const editItem = menu.querySelector('[data-action="edit"]');
-      const deleteItem = menu.querySelector('[data-action="delete"]');
-      if (editItem) {
-        editItem.hidden = isBookmark;
-      }
-      if (deleteItem) {
-        deleteItem.hidden = isBookmark;
-      }
+    if (isBookmark && openBookmarkContextMenu(item, event)) {
+      return;
+    }
+
+    // Custom entries, or the fallback when the native menu is unavailable,
+    // keep the Quick Launch menu and edit through the settings page.
+    state.contextItem = item;
+    const menu = ensureContextMenu();
+    const editItem = menu.querySelector('[data-action="edit"]');
+    const deleteItem = menu.querySelector('[data-action="delete"]');
+    if (editItem) {
+      editItem.hidden = isBookmark;
+    }
+    if (deleteItem) {
+      deleteItem.hidden = isBookmark;
     }
 
     const rect = event.currentTarget?.getBoundingClientRect?.();
@@ -1703,10 +1809,11 @@ ${item.url}
     }
 
     try {
+      state.bookmarkMenuState?.menu?.hidePopup?.();
+      restoreBookmarkContextMenu();
       document.getElementById(CONTAINER_ID)?.remove();
       document.getElementById(DIVIDER_ID)?.remove();
       document.getElementById(CONTEXT_MENU_ID)?.remove();
-      document.getElementById(BOOKMARK_CONTEXT_MENU_ID)?.remove();
       document.getElementById(DRAG_INDICATOR_ID)?.remove();
       document.documentElement.removeAttribute(
         "zen-quick-launch-loaded"

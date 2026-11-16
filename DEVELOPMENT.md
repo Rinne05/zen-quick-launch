@@ -353,10 +353,10 @@ Marionette 客户端；日常仍以 Browser Toolbox 手工检查为准。
     `JS/zen-quick-launch.uc.js` 中的 `SETTINGS_URL`、README 和设置页链接。
 12. **不要编辑生成的 `sine-mods/chrome.css`。** 它每次刷新都会重写；要改样式
     请改仓库根目录的 `chrome.css`。
-13. **书签右键菜单依赖 Zen 原生菜单模板。** 它从
-    `#sidebar-bookmarks-context-menu` 克隆结构和文案，并调用 Places API；
-    Zen 更新后先检查菜单项 ID、`PlacesUIUtils` 和 `PlacesTransactions` 接口
-    是否仍然存在。
+13. **书签右键菜单借用 Zen 原生菜单。** 它临时使用
+    `#sidebar-bookmarks-context-menu`，关闭时恢复原生状态，并通过 Places API
+    执行命令；因此主题按原生 ID 写的图标和样式会自动生效。Zen 更新后先检查
+    菜单项 ID、`PlacesUIUtils` 和 `PlacesTransactions` 接口是否仍然存在。
 
 ## 发布检查清单
 
