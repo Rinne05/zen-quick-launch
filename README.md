@@ -49,17 +49,3 @@ chrome://zen-quick-launch/content/settings.html
 - 设置页内 `Ctrl/Cmd + S` 保存。
 
 禁用 Mod 时，Sine 会调用脚本卸载回调：侧栏节点、右键菜单、拖动指示器与观察器会清理，Sine 管理的样式也会停用。设置页由 `chrome.manifest` 提供，其注册状态会随 Mod 启用状态在重启后更新；重新启用即可恢复。
-
-## 项目结构
-
-```text
-theme.json
-chrome.manifest
-chrome.css
-settings.css
-settings.html
-settings.js
-JS/
-  zen-quick-launch.uc.js
-README.md
-```
